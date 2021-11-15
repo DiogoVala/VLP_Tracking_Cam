@@ -69,13 +69,8 @@ newCameraMtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
 undistortedImg = cv2.undistort(img, mtx, dist, None, newCameraMtx)
 
 # Crop the undistorted image
-<<<<<<< HEAD
 #x, y, w, h = roi
 #undistortedImg = undistortedImg[y:y + h, x:x + w]
-=======
-x, y, w, h = roi
-undistortedImg = undistortedImg[y:y + h, x:x + w]
->>>>>>> f5da6ee20bfbef39457911e0ca50a3cd2fe95ce0
 
 # Display the final result
 cv2.imshow('chess board', np.hstack((img, undistortedImg)))
