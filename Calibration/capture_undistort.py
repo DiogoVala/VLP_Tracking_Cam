@@ -48,8 +48,13 @@ while True:
 			for corner in marker:
 				x_mean=int(np.mean(corner[:,0]))
 				y_mean=int(np.mean(corner[:,1]))
+<<<<<<< HEAD
 				#frame = cv2.line(frame, (x_mean-10, y_mean), (x_mean+10, y_mean),(0,0,255), 2)
 				#frame = cv2.line(frame, (x_mean, y_mean-10), (x_mean, y_mean+10),(0,0,255), 2)
+=======
+				frame = cv2.line(frame, (x_mean-10, y_mean), (x_mean+10, y_mean),(0,0,255), 2)
+				frame = cv2.line(frame, (x_mean, y_mean-10), (x_mean, y_mean+10),(0,0,255), 2)
+>>>>>>> f5da6ee20bfbef39457911e0ca50a3cd2fe95ce0
 				x_marker_center.append(x_mean)
 				y_marker_center.append(y_mean)
 
@@ -58,7 +63,11 @@ while True:
 			#frame = cv2.circle(frame, img_center, 1,(0,0,255), 3)
 		
 		cv2.imshow('Aruco detection with camera calibration',frame)
+<<<<<<< HEAD
 		cv2.imshow('Aruco detection with camera calibration',frame_markers)
+=======
+		
+>>>>>>> f5da6ee20bfbef39457911e0ca50a3cd2fe95ce0
 		
 	
 		#cv2.imshow('Calibration test', np.hstack((frame, undistortedFrame)))
