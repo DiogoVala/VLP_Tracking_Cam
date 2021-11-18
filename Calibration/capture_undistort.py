@@ -3,19 +3,36 @@ import cv2
 import re
 from PIL import Image
 from cv2 import aruco
-import matplotlib.pyplot as plt
-import matplotlib as mpl
-import pandas as pd
 import time
 
+# GPIO stuff
+import RPi.GPIO as GPIO
+GPIO.setwarnings(False)
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(2, GPIO.OUT)
+#GPIO.output(2, GPIO.HIGH)
+
+# CV2 Text settings
+font = cv2.FONT_HERSHEY_SIMPLEX
+fontScale = 0.7
+color = (0, 0, 255)
+thickness = 1
+
+# Camera matrix and distortion vector
 calib_file = np.load("calib.npz")
 mtx=calib_file['mtx']
 dist=calib_file['dist']
 
+# Video capture settings
 cam = cv2.VideoCapture(0)
 cam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
 cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
+time.sleep(0.1)
+
+def flattenList(list):
+	return [item for sublist in list for item in sublist]
+	
 while True:
 	
 	ret,frame = cam.read()
@@ -29,7 +46,6 @@ while True:
 		newCameraMtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
 		undistortedFrame = cv2.undistort(frame, mtx, dist, None, newCameraMtx)
 		
-		# Crop the new frame to the ROI and resize to original size
 		x, y, w, h = roi
 		undistortedFrame = undistortedFrame[y:y + h, x:x + w]
 		undistortedFrame = cv2.resize(undistortedFrame, (640,480), interpolation = cv2.INTER_LANCZOS4)
@@ -44,27 +60,46 @@ while True:
 
 		x_marker_center=[]
 		y_marker_center=[]
-		for marker in markers:
-			for corner in marker:
-				x_mean=int(np.mean(corner[:,0]))
-				y_mean=int(np.mean(corner[:,1]))
-				#frame = cv2.line(frame, (x_mean-10, y_mean), (x_mean+10, y_mean),(0,0,255), 2)
-				#frame = cv2.line(frame, (x_mean, y_mean-10), (x_mean, y_mean+10),(0,0,255), 2)
-				x_marker_center.append(x_mean)
-				y_marker_center.append(y_mean)
+		
+		if(len(markers) !=0 and len(ids) != 0):
+			markers = flattenList(markers)
+			ids = flattenList(ids)
+			
+			for m_id in ids:
+				print(m_id)
+				
+				idx = ids.index(m_id)
+				
+				marker = markers[idx]
 
-		if(len(x_marker_center)!=0):       
-			img_center=(int(np.mean(x_marker_center)), int(np.mean(y_marker_center)))
-			#frame = cv2.circle(frame, img_center, 1,(0,0,255), 3)
+				for i, corner in enumerate(marker):
+					x=int(corner[0])
+					y=int(corner[1])
+					frame = cv2.line(frame, (x-10, y), (x+10, y),(0,0,255), 2)
+					frame = cv2.line(frame, (x, y-10), (x, y+10),(0,0,255), 2)
+					# Draw the text
+					cv2.putText(frame, str(i), (x,y), font, fontScale, color, thickness, cv2.LINE_AA)
+					
+
+			if(len(x_marker_center)!=0):       
+				img_center=(int(np.mean(x_marker_center)), int(np.mean(y_marker_center)))
+				#frame = cv2.circle(frame, img_center, 1,(0,0,255), 3)
 		
 		cv2.imshow('Aruco detection with camera calibration',frame)
-		cv2.imshow('Aruco detection with camera calibration',frame_markers)
+		#cv2.imshow('Aruco detection with camera calibration',frame_markers)
 		
 	
 		#cv2.imshow('Calibration test', np.hstack((frame, undistortedFrame)))
-	
-	if cv2.waitKey(1)&0xFF == ord('q'):
+		
+	key=cv2.waitKey(33)
+	if key == ord('q'):
+		GPIO.output(2, GPIO.LOW)
+		GPIO.cleanup()
 		break
+	if key == ord('l'):
+		GPIO.output(2, GPIO.HIGH)
+	if key == ord('o'):
+		GPIO.output(2, GPIO.LOW)	
 
 cam.release()
 cv2.destroyAllWindows()
