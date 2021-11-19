@@ -21,6 +21,7 @@ thickness = 1
 calib_file = np.load("calib.npz")
 mtx=calib_file['mtx']
 dist=calib_file['dist']
+criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
 # Video capture settings
 frame_width=640
@@ -31,13 +32,12 @@ cam.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
 
 # Real world position of corners
 ################  Corner 0 ##### Corner 1 ##### Corner 2 ####### Corner 3 #########
-objp=np.array([[122,  85, 0], [122,  47, 0], [ 85,   47, 0], [  85,  85, 0],\
-			   [122, -47, 0], [122, -85, 0], [ 85,  -85, 0], [  85, -47, 0],\
-			   [-85, -47, 0], [-85, -85, 0], [-122, -85, 0], [-122, -47, 0],\
-			   [-85,  85, 0], [-85,  47, 0], [-122,  47, 0], [-122,  85, 0]],\
+objp=np.array([[-137.5,  96.5, 0], [-96.5,  96.5, 0], [-96.5,  55,   0], [-137.5,  55,   0],\
+			   [  96.5,  96.5, 0], [137.5,  96.5, 0], [137.5,  55,   0], [  96.5,  55,   0],\
+			   [ 137.5, -55.0, 0], [-96.5, -55.0, 0], [-96.5, -96.5, 0], [-137.5, -96.5, 0],\
+			   [  96.5, -55.0, 0], [137.5, -55.0, 0], [137.5, -96.5, 0], [  96.5, -96.5, 0]],\
 			   dtype = np.float32)
 
-print(objp)
 def flattenList(list):
 	return [item for sublist in list for item in sublist]
 
@@ -76,7 +76,7 @@ while True:
 	
 	if frame is not None:
 		
-		#frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+		frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 		
 		frame = undistortFrame(frame)
 		
@@ -105,7 +105,7 @@ while True:
 					
 			#print(flattenList(imgPts))
 			imgPts=np.array(flattenList(imgPts), dtype = np.float32)
-			print(imgPts)
+			#imgPts = cv2.cornerSubPix(frame,imgPts,(11,11),(-1,-1),criteria)
 			
 			# Get corresponding objp of the detected imgPts
 			objpp=[]
@@ -118,13 +118,26 @@ while True:
 			
 			# Find the rotation and translation vectors.
 			ret, rvecs, tvecs = cv2.solvePnP(objpp, imgPts, mtx, dist)
-			print("Rotation:", rvecs)
-			print("Translation:", tvecs)
+			
+			print("\n")
+			print("Rotation:"),
+			for val in rvecs:
+				print(round(val[0],2), (round(val[0]*180/3.1415,2)))
+			print("Translation:"),
+			for val in tvecs:
+				print(round(val[0],2))
+			
+			
 			# Project 3D points to image plane
-			#imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
-
+			'''
+			axis = np.float32([[3,0,0], [0,3,0], [0,0,-3]]).reshape(-1,3)
+			imgpts, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, dist)
+			
+			for pt in imgpts:
+				drawCorner(frame, pt[0])
+			'''
+			
 		cv2.imshow('Aruco detection with camera calibration',frame)
-		#cv2.imshow('Aruco detection with camera calibration',frame_markers)
 		
 	key=cv2.waitKey(33)
 	if key == ord('q'):
@@ -135,13 +148,6 @@ while True:
 		GPIO.output(2, GPIO.HIGH)
 	if key == ord('o'):
 		GPIO.output(2, GPIO.LOW)
-		#cv2.imshow('Aruco detection with camera calibration',frame_markers)
-		
-	
-		#cv2.imshow('Calibration test', np.hstack((frame, undistortedFrame)))
-	
-	if cv2.waitKey(1)&0xFF == ord('q'):
-		break
 
 cam.release()
 cv2.destroyAllWindows()
