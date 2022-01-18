@@ -72,8 +72,8 @@ def main():
     # ---- DEFAULT VALUES ---
     SAVE_FOLDER = "."
     FILE_NAME = "snapshot"
-    FRAME_WIDTH = 1920
-    FRAME_HEIGHT = 1080
+    FRAME_WIDTH = 1280
+    FRAME_HEIGHT = 960
 
     # ----------- PARSE THE INPUTS -----------------
     parser = argparse.ArgumentParser(

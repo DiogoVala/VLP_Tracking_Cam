@@ -25,8 +25,8 @@ dist=calib_file['dist']
 
 # Video capture settings
 cam = cv2.VideoCapture(0)
-cam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 960)
 
 time.sleep(0.1)
 
@@ -58,6 +58,19 @@ while True:
 		markers, ids, rejectedImgPoints = aruco.detectMarkers(frame, aruco_dict, parameters=parameters)
 		frame_markers = aruco.drawDetectedMarkers(frame.copy(), markers, ids)
 
+		rvecs, tvecs = aruco.estimatePoseSingleMarkers(markers, 39, newCameraMtx, dist)
+		print(rvecs)
+		print(tvecs)
+		'''
+		tvec = np.array(tvecs)
+		rmat,_= cv2.Rodrigues(rvecs)
+		rmat = np.array(rmat)
+		rmat = rmat.T
+		camera_pose = -rmat @ tvecs
+
+		print("Camera pose:\nx: %dmm\ny: %dmm\nz: %dmm" % (camera_pose[0], camera_pose[1], camera_pose[2]))
+		'''	
+
 		x_marker_center=[]
 		y_marker_center=[]
 		
@@ -66,7 +79,6 @@ while True:
 			ids = flattenList(ids)
 			
 			for m_id in ids:
-				print(m_id)
 				
 				idx = ids.index(m_id)
 				

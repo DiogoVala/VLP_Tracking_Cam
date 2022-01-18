@@ -12,7 +12,7 @@ rows = 9
 cols = 6
 
 # Set the termination criteria for the corner sub-pixel algorithm
-criteria = (cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 23, 0.001)
+criteria = (cv2.TERM_CRITERIA_MAX_ITER + cv2.TERM_CRITERIA_EPS, 1000000, 0.001)
 
 # Prepare the object points: (0,0,0), (1,0,0), (2,0,0), ..., (6,5,0). They are the same for all images
 objectPoints = np.zeros((rows * cols, 3), np.float32)
@@ -61,7 +61,7 @@ for i in range(len(objectPointsArray)):
 print("Total error: ", error / len(objectPointsArray))
 
 # Load one of the test images
-img = cv2.imread('snapshot_640_480_11.jpg')
+img = cv2.imread('snapshot_1280_960_0.jpg')
 h, w = img.shape[:2]
 
 # Obtain the new camera matrix and undistort the image
