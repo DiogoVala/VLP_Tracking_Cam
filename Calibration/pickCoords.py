@@ -30,6 +30,9 @@ calib_file = np.load("calib.npz")
 mtx=calib_file['mtx']
 dist=calib_file['dist']
 
+# Window name
+window_name = 'System Tester'
+
 # Real world position of corners
 ################  	  Corner 0 	 #####     Corner 1   #####     Corner 2 #######    Corner 3 #####
 objp=np.array([[-115.5, -80.0, 0.0], [-79.5, -80.0, 0.0], [-79.5, -44.5, 0.0], [-115.5, -44.5,  0],\
@@ -37,8 +40,9 @@ objp=np.array([[-115.5, -80.0, 0.0], [-79.5, -80.0, 0.0], [-79.5, -44.5, 0.0], [
 			   [-115.5,  44.5, 0.0], [-79.5,  44.5, 0.0], [-79.5,  80.0, 0.0], [-115.5,  80.0,  0],\
 			   [  79.5,  44.5, 0.0], [115.5,  44.5, 0.0], [115.5,  80.0, 0.0], [  79.5,  80.0,  0]],\
 			   dtype = np.float32)
-
-PoIs=[(2026, 1630), (2864, 1636), (1175, 1623), (2032, 1158) ,(2021, 2097)]
+			   
+x_p=[]
+y_p=[]
 
 def flattenList(list):
 	return [item for sublist in list for item in sublist]
@@ -58,10 +62,10 @@ def undistortFrame(frame):
 	newCameraMtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
 	undistortedFrame = cv2.undistort(frame, mtx, dist, None, newCameraMtx)
 	# Crop the new frame to the ROI
-	#x, y, w, h = roi
-	#undistortedFrame = undistortedFrame[y:y + h, x:x + w]
+	x, y, w, h = roi
+	undistortedFrame = undistortedFrame[y:y + h, x:x + w]
 	# Resize frame to original size
-	#undistortedFrame = cv2.resize(undistortedFrame, (RESOLUTION[0], RESOLUTION[1]), interpolation = cv2.INTER_LANCZOS4)
+	undistortedFrame = cv2.resize(undistortedFrame, (RESOLUTION[0], RESOLUTION[1]), interpolation = cv2.INTER_LANCZOS4)
 
 	return undistortedFrame
 
@@ -112,6 +116,16 @@ def drawRealWorld(x, y, frame):
 	txt = f"({float(world_coords[0]):0.2f}, {float(world_coords[1]):0.2f})mm"
 	cv2.putText(frame, txt, (x,y), font, fontScale/2, color1, thickness, cv2.LINE_AA)
 
+def click_event(event, x, y, flags, params):
+	# checking for left mouse clicks
+    if event == cv2.EVENT_LBUTTONDOWN:
+ 
+        # displaying the coordinates
+        # on the Shell
+        x_p.append(x)
+        y_p.append(y*4)
+        print(x, ' ', y)
+
 # main
 with picamera.PiCamera() as camera:
 	
@@ -123,9 +137,6 @@ with picamera.PiCamera() as camera:
 	while True:
 		tic=time.perf_counter()
 		camera.capture(frame, 'rgb')
-		
-		# Undistort frame
-		frame = undistortFrame(frame)
 		
 		# Look for ArUco markers
 		valid_markers, markers, ids = detectArucos(frame)
@@ -168,7 +179,7 @@ with picamera.PiCamera() as camera:
 			
 			
 			# Find the rotation and translation vectors.
-			ret, rvecs, tvecs = cv2.solvePnP(objpp, imgPts, mtx, None)
+			ret, rvecs, tvecs = cv2.solvePnP(objpp, imgPts, mtx, dist)
 			
 			# Camera pose calculation 
 			tvec = np.array(tvecs)
@@ -180,27 +191,31 @@ with picamera.PiCamera() as camera:
 			camera_pos = -rmat @ tvec
 			camera_ori= R.as_euler('xyz', degrees=True)
 			
-			print("Camera pos:\nx: %dmm\ny: %dmm\nz: %dmm" % (camera_pos[0], camera_pos[1], camera_pos[2]))
-			print("Camera ori:\nx: %.2fº\ny: %.2fº\nz: %.2fº" % (camera_ori[0], camera_ori[1], camera_ori[2]))
+			#print("Camera pos:\nx: %dmm\ny: %dmm\nz: %dmm" % (camera_pos[0], camera_pos[1], camera_pos[2]))
+			#print("Camera ori:\nx: %.2fº\ny: %.2fº\nz: %.2fº" % (camera_ori[0], camera_ori[1], camera_ori[2]))
 			
 			# Reproject objp in the image plane
-			projs, jac = cv2.projectPoints(objpp, rvecs, tvecs, mtx, None)
+			projs, jac = cv2.projectPoints(objpp, rvecs, tvecs, mtx, dist)
 			
 			
 			for proj in projs:
-				drawReprojection(frame, proj[0]) 
+				drawReprojection(frame, proj[0])
 			
-			for poi in PoIs:
-				drawRealWorld(poi[0], poi[1], frame)
-			
-		
+			for x, y in zip(x_p, y_p):
+				print(x, y)
+				drawRealWorld(x, y, frame)
+
+		# Undistort frame
+		frame = undistortFrame(frame)
 		
 		cv2.imwrite("a.jpg", frame)
 		toc = time.perf_counter()
-		print(f"Calibration time: {toc - tic:0.4f} seconds")
-		frame_resized = cv2.resize(frame, (int(RESOLUTION[0]/3), int(RESOLUTION[1]/3)))
-		cv2.imshow('Picamera',frame_resized)
+		#print(f"Calibration time: {toc - tic:0.4f} seconds")
+		frame_resized = cv2.resize(frame, (int(RESOLUTION[0]/4), int(RESOLUTION[1]/4)))
+		cv2.imshow(window_name,frame)
+		#cv2.imshow(window_name,frame_resized)
 		
+		cv2.setMouseCallback(window_name, click_event)
 		
 		key=cv2.waitKey(33)
 		if key == ord('q'):
