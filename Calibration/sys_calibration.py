@@ -38,7 +38,10 @@ objp=np.array([[-115.5, -80.0, 0.0], [-79.5, -80.0, 0.0], [-79.5, -44.5, 0.0], [
 			   [  79.5,  44.5, 0.0], [115.5,  44.5, 0.0], [115.5,  80.0, 0.0], [  79.5,  80.0,  0]],\
 			   dtype = np.float32)
 
-PoIs=[(2026, 1630), (2864, 1636), (1175, 1623), (2032, 1158) ,(2021, 2097)]
+PoIs=[(2028, 1630), (2868, 1636), (1183, 1623), (2034, 1158) ,(2022, 2097)]
+
+PoIs_proj=np.array([[0.0, 0.0, 0.0], [-79.5, 0.0, 0.0], [0.0, -44.5, 0.0], [0.0, 44.5,  0],\
+					[79.5, 0.0, 0.0]],dtype = np.float32)
 
 def flattenList(list):
 	return [item for sublist in list for item in sublist]
@@ -185,11 +188,14 @@ with picamera.PiCamera() as camera:
 			
 			# Reproject objp in the image plane
 			projs, jac = cv2.projectPoints(objpp, rvecs, tvecs, mtx, None)
-			
-			
 			for proj in projs:
 				drawReprojection(frame, proj[0]) 
+				
 			
+			projs1, jac1 = cv2.projectPoints(PoIs_proj, rvecs, tvecs, mtx, None)
+			for proj in projs1:
+				drawReprojection(frame, proj[0]) 
+
 			for poi in PoIs:
 				drawRealWorld(poi[0], poi[1], frame)
 			
