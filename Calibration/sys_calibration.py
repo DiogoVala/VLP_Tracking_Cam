@@ -119,7 +119,8 @@ def drawRealWorld(x, y, frame):
 with picamera.PiCamera() as camera:
 	
 	camera.resolution = RESOLUTION
-	camera.exposure_mode = 'spotlight'
+	camera.exposure_mode = 'auto'
+	camera.iso = 1600
 	camera.color_effects = (128, 128)
 	frame = np.empty((RESOLUTION[1], RESOLUTION[0], 3), dtype=np.uint8)
 
@@ -194,10 +195,12 @@ with picamera.PiCamera() as camera:
 			
 			projs1, jac1 = cv2.projectPoints(PoIs_proj, rvecs, tvecs, mtx, None)
 			for proj in projs1:
-				drawReprojection(frame, proj[0]) 
+				drawReprojection(frame, proj[0])
 
-			for poi in PoIs:
-				drawRealWorld(poi[0], poi[1], frame)
+			for poi in projs1:
+				poi=poi[0]
+				print(poi)
+				drawRealWorld(int(round(poi[0],0)), int(round(poi[1],0)), frame)
 			
 		
 		
