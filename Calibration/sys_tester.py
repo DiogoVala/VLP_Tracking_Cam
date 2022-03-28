@@ -1,9 +1,8 @@
 import numpy as np
 import cv2
-import re
-from PIL import Image
 import cv2.aruco as aruco
 import picamera
+from picamera.array import PiRGBArray
 import time
 import math
 from scipy.spatial.transform import Rotation
@@ -22,11 +21,25 @@ color = (0, 0, 255)
 color1 = (255, 0, 0)
 thickness = 3
 
+# Blob detector
+params = cv2.SimpleBlobDetector_Params()
+params.filterByArea = True
+params.minArea = 50
+params.maxArea = 10000
+params.minDistBetweenBlobs = 500
+params.filterByCircularity = True
+params.minCircularity = 0
+params.filterByConvexity = True
+params.minConvexity = 0
+params.filterByInertia = True
+params.minInertiaRatio = 0.1
+detector = cv2.SimpleBlobDetector_create(params)
+
 # Camera Settings
 RESOLUTION = (4032, 3040)
 
 # Camera matrix and distortion vector
-calib_file = np.load("calib.npz")
+calib_file = np.load("camera_intrinsics.npz")
 mtx=calib_file['mtx']
 dist=calib_file['dist']
 
@@ -55,20 +68,12 @@ def detectArucos(frame):
 
 	return ret, corners, ids
 
-def undistortFrame(frame):
-	h, w = frame.shape[:2]
-	# Obtain the new camera matrix and undistort the image
-	newCameraMtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
-	undistortedFrame = cv2.undistort(frame, mtx, dist, None, newCameraMtx)
-	# Crop the new frame to the ROI
-	#x, y, w, h = roi
-	#undistortedFrame = undistortedFrame[y:y + h, x:x + w]
-	# Resize frame to original size
-	#undistortedFrame = cv2.resize(undistortedFrame, (RESOLUTION[0], RESOLUTION[1]), interpolation = cv2.INTER_LANCZOS4)
+def undistortFrame(frame, mapx, mapy):
+	# Remaps the frame pixels to their new positions 
+	frame = cv2.remap(frame, mapx, mapy, cv2.INTER_LINEAR)
+	return frame
 
-	return undistortedFrame
-
-def drawCorner(frame, corner):
+def drawCorner(frame, corner, i):
 	x=int(corner[0])
 	y=int(corner[1])
 	frame = cv2.line(frame, (x-30, y), (x+30, y),(0,0,255), 2)
@@ -105,6 +110,16 @@ def getWorldCoordsAtZ(image_point, z, mtx, rmat, tvec):
     wcPoint[2] = z
 
     return wcPoint
+    
+def drawWorldAxis(frame):
+	axis=np.array([[0.0, -100.0, 0.0], [0.0, 100.0, 0.0], [-135.0, 0.0, 0.0], [135.0, 0.0,  0] , [0.0, 0.0, 0.0], [0.0, 0.0, -400.0]],dtype = np.float32)
+	projs, jac = cv2.projectPoints(axis, rvecs, tvecs, mtx, None)
+	# Y axis
+	frame = cv2.arrowedLine(frame, (int(round(projs[0][0][0],0)), int(round(projs[0][0][1], 0))), (int(round(projs[1][0][0],0)), int(round(projs[1][0][1],0))),(0,255,0), 5, tipLength = 0.05)
+	# X axis
+	frame = cv2.arrowedLine(frame, (int(round(projs[2][0][0],0)), int(round(projs[2][0][1], 0))), (int(round(projs[3][0][0],0)), int(round(projs[3][0][1],0))),(30,30,255), 5, tipLength = 0.05)
+
+	#frame = cv2.line(frame, (int(round(projs[4][0][0],0)), int(round(projs[4][0][1], 0))), (int(round(projs[5][0][0],0)), int(round(projs[5][0][1],0))),(255,0,0), 2)
 
 def drawRealWorld(x, y, frame):
 	frame = cv2.line(frame, (x-30, y), (x+30, y),(255,0,0), 2)
@@ -113,7 +128,65 @@ def drawRealWorld(x, y, frame):
 	image_point=(x, y)
 	world_coords=getWorldCoordsAtZ(image_point, 0.0, mtx, rmat, tvec)
 	txt = f"({float(world_coords[0]):0.2f}, {float(world_coords[1]):0.2f})mm"
-	cv2.putText(frame, txt, (x,y), font, fontScale/2, color1, thickness, cv2.LINE_AA)
+	cv2.putText(frame, txt, (x,y-10), font, fontScale/2, color1, thickness, cv2.LINE_AA)
+
+def organizeObjpp(markers, ids):
+	# Flatten lists to make them more maneageable 
+	markers = flattenList(markers)
+	ids = flattenList(ids)
+
+	# Here we create a list of found marker corners.
+	imgPts=[]
+	for m_id in sorted(ids):
+		
+		idx = ids.index(m_id)
+		marker = markers[idx]
+		
+		corners=[]
+		for i, corner in enumerate(marker):
+			x=int(corner[0])
+			y=int(corner[1])
+			corners.append([x, y])
+			drawCorner(frame, corner, i)
+			
+		imgPts.append(corners) # Ordered list of corners
+			
+	
+	# List of pixel coordinate for each found marker corner 
+	imgPts=np.array(flattenList(imgPts), dtype = np.float32)
+	
+	# Get corresponding objp of the detected imgPts
+	objpp=[]
+	for id in sorted(ids):
+		ii=id*4
+		for i in range(4):
+			objpp.append(list(objp[ii]))
+			ii+=1
+	objpp=np.array(objpp)
+	
+	return objpp, imgPts
+	
+
+def detectBlob(frame):
+	yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
+
+	lower_range = np.array([0,0,83])
+	upper_range = np.array([233,255,255])
+
+	mask = cv2.inRange(yuv, lower_range, upper_range)
+	keypoints = detector.detect(mask)
+	
+	if keypoints:
+		leds = [keypoint.pt for keypoint in keypoints]
+		
+		for led in leds:
+			led = (int(led[0]), int(led[1]))
+			frame = cv2.line(frame, (led[0]-30, led[1]), (led[0]+30, led[1]),(0,0,255), 4)
+			frame = cv2.line(frame, (led[0], led[1]-30), (led[0], led[1]+30),(0,0,255), 4)
+		
+	print(leds)
+	return mask
+	
 
 # main
 with picamera.PiCamera() as camera:
@@ -121,55 +194,35 @@ with picamera.PiCamera() as camera:
 	camera.resolution = RESOLUTION
 	camera.exposure_mode = 'auto'
 	camera.iso = 1600
-	camera.color_effects = (128, 128)
-	frame = np.empty((RESOLUTION[1], RESOLUTION[0], 3), dtype=np.uint8)
+	#camera.color_effects = (128, 128)
+	capture = PiRGBArray(camera, size=RESOLUTION)
+	h = RESOLUTION[1]
+	w = RESOLUTION[0]
+	
+	# Get undistortion maps (This allows for a much faster undistortion using cv2.remap)
+	newCameraMatrix, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
+	mapx, mapy = cv2.initUndistortRectifyMap(mtx, dist, None, newCameraMatrix, (w, h), cv2.CV_32FC1)
 
 	while True:
 		tic=time.perf_counter()
-		camera.capture(frame, 'rgb')
+		camera.capture(capture, 'rgb')
+		
+		frame = capture.array
+		capture.truncate(0)
 		
 		# Undistort frame
-		frame = undistortFrame(frame)
+		frame = undistortFrame(frame, mapx, mapy)
+		
+		# Detect LED blob
+		mask = detectBlob(frame)
 		
 		# Look for ArUco markers
 		valid_markers, markers, ids = detectArucos(frame)
-	
+		
 		if valid_markers:
 			
-			# Flatten lists to make them more maneageable 
-			markers = flattenList(markers)
-			ids = flattenList(ids)
-
-			# Here we create a list of found marker corners.
-			imgPts=[]
-			for m_id in sorted(ids):
-				
-				idx = ids.index(m_id)
-				marker = markers[idx]
-				
-				corners=[]
-				for i, corner in enumerate(marker):
-					x=int(corner[0])
-					y=int(corner[1])
-					corners.append([x, y])
-					drawCorner(frame, corner)
-					
-				imgPts.append(corners) # Ordered list of corners
-					
-			
-			# List of pixel coordinate for each found marker corner 
-			imgPts=np.array(flattenList(imgPts), dtype = np.float32)
-			#imgPts = cv2.cornerSubPix(frame,imgPts,(11,11),(-1,-1),criteria)
-			
-			# Get corresponding objp of the detected imgPts
-			objpp=[]
-			for id in sorted(ids):
-				ii=id*4
-				for i in range(4):
-					objpp.append(list(objp[ii]))
-					ii+=1
-			objpp=np.array(objpp)
-			
+			# Organize data obtained from detectedArucos
+			objpp, imgPts = organizeObjpp(markers, ids)
 			
 			# Find the rotation and translation vectors.
 			ret, rvecs, tvecs = cv2.solvePnP(objpp, imgPts, mtx, None)
@@ -191,28 +244,32 @@ with picamera.PiCamera() as camera:
 			projs, jac = cv2.projectPoints(objpp, rvecs, tvecs, mtx, None)
 			for proj in projs:
 				drawReprojection(frame, proj[0]) 
-				
 			
+			# Reproject Points of Interest
 			projs1, jac1 = cv2.projectPoints(PoIs_proj, rvecs, tvecs, mtx, None)
 			for proj in projs1:
 				drawReprojection(frame, proj[0])
 
 			for poi in projs1:
 				poi=poi[0]
-				print(poi)
 				drawRealWorld(int(round(poi[0],0)), int(round(poi[1],0)), frame)
 			
+			drawWorldAxis(frame)
+			txt = f"Camera position (xyz): {float(camera_pos[0]):0.2f}, {float(camera_pos[1]):0.2f} , {float(camera_pos[2]):0.2f} mm"
+			cv2.putText(frame, txt, (700,100), font, fontScale, (255,255,255), thickness, cv2.LINE_AA)
+			txt = f"Euler angles (xyz): {float(camera_ori[0]):0.2f}, {float(camera_ori[1]):0.2f} , {float(camera_ori[2]):0.2f} deg"
+			cv2.putText(frame, txt, (700,200), font, fontScale, (255,255,255), thickness, cv2.LINE_AA)
 		
+		#cv2.imwrite("a.jpg", mask)
 		
-		cv2.imwrite("a.jpg", frame)
 		toc = time.perf_counter()
 		print(f"Calibration time: {toc - tic:0.4f} seconds")
-		frame_resized = cv2.resize(frame, (int(RESOLUTION[0]/3), int(RESOLUTION[1]/3)))
-		cv2.imshow('Picamera',frame_resized)
-		
+		cv2.imshow('mask', cv2.resize(mask, (int(RESOLUTION[0]/4), int(RESOLUTION[1]/4))))
+		cv2.imshow('Picamera',cv2.resize(frame, (int(RESOLUTION[0]/4), int(RESOLUTION[1]/4))))
 		
 		key=cv2.waitKey(33)
 		if key == ord('q'):
+			GPIO.output(2, GPIO.LOW)
 			break
 		if key == ord('l'):
 			GPIO.output(2, GPIO.HIGH)

@@ -1,13 +1,10 @@
 import numpy as np
 import cv2
-import re
-from PIL import Image
 import cv2.aruco as aruco
 import picamera
+from picamera.array import PiRGBArray
 import time
-import math
 from scipy.spatial.transform import Rotation
-from numpy.linalg import inv
 
 # Camera Settings
 RESOLUTION = (4032, 3040)
@@ -48,24 +45,31 @@ def undistortFrame(frame, mapx, mapy):
 	return frame
 
 def runCalibration():
+	tic = time.perf_counter()
+	
+	camera_pos = None
+	camera_ori = None
 	
 	# Variable to store frame
-	frame_new = np.empty((RESOLUTION[1], RESOLUTION[0], 3), dtype=np.uint8)
-	h, w = frame_new.shape[:2]
+	capture = PiRGBArray(camera, size=RESOLUTION)
+	h = RESOLUTION[1]
+	w = RESOLUTION[0]
 
 	# Get undistortion maps (This allows for a much faster undistortion using cv2.remap)
 	newCameraMatrix, roi = cv2.getOptimalNewCameraMatrix(cameraMatrix, cameraDistortion, (w, h), 1, (w, h))
 	mapx, mapy = cv2.initUndistortRectifyMap(cameraMatrix, cameraDistortion, None, newCameraMatrix, (w, h), cv2.CV_32FC1)
 
 	# Capture frame from PiCamera
-	camera.capture(frame_new, 'rgb')
+	camera.capture(capture, 'rgb')
+	frame_new = capture.array
+	capture.truncate(0)
 	
 	# ArUco detection is faster in grayscale
 	frame = cv2.cvtColor(frame_new, cv2.COLOR_BGR2GRAY)
-	
+
 	# Undistort frame
 	frame = undistortFrame(frame, mapx, mapy)
-
+	
 	# Look for ArUco markers
 	valid_markers, markers, ids = detectArucos(frame)
 	
@@ -115,9 +119,20 @@ def runCalibration():
 		camera_pos = -rmat @ tvec
 		camera_ori= R.as_euler('xyz', degrees=True)
 		
+		toc = time.perf_counter()
+		
 		#print("Camera pos:\nx: %dmm\ny: %dmm\nz: %dmm" % (camera_pos[0], camera_pos[1], camera_pos[2]))
 		#print("Camera ori:\nx: %.2fº\ny: %.2fº\nz: %.2fº" % (camera_ori[0], camera_ori[1], camera_ori[2]))
 		
 		print("Calibration Complete.")
+		print(f"Calibration time: {toc - tic:0.4f} seconds")
 		print("Number of markers detected:", valid_markers)
-	return valid_markers, camera_pos, camera_ori, mapx, mapy 
+		
+		camera.close()
+		return valid_markers, camera_pos, camera_ori, mapx, mapy, cameraMatrix, cameraDistortion, newCameraMatrix, rmat, tvec
+	else: 
+		print("Calibration Failed.")
+		print("Number of markers detected:", valid_markers)
+		camera.close()
+		return valid_markers, None, None, mapx, mapy, cameraMatrix, cameraDistortion, newCameraMatrix, None, None
+		

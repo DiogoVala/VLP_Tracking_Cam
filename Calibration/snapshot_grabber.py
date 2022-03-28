@@ -6,10 +6,10 @@ import picamera
 import numpy as np
 
 # Settings
-SAVE_FOLDER = "./snapshots"
+FRAME_WIDTH = 2016
+FRAME_HEIGHT = 1520
+SAVE_FOLDER = "./snapshots_"+str(FRAME_WIDTH)+"x"+str(FRAME_HEIGHT)
 FILE_NAME = "snapshot"
-FRAME_WIDTH = 4032
-FRAME_HEIGHT = 3040
 
 def save_snaps(width, height, name, folder):
 
@@ -38,7 +38,7 @@ def save_snaps(width, height, name, folder):
             
             frame_g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-            frame_resized = cv2.resize(frame_g, (int(width/4), int(height/4)))
+            frame_resized = cv2.resize(frame_g, (int(width/2), int(height/2)))
             cv2.imshow('Snapshot Preview', frame_resized)
 
             key = cv2.waitKey(1) & 0xFF
