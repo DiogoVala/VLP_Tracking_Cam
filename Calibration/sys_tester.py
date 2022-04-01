@@ -21,22 +21,42 @@ color = (0, 0, 255)
 color1 = (255, 0, 0)
 thickness = 3
 
-# Blob detector
-params = cv2.SimpleBlobDetector_Params()
-params.filterByArea = True
-params.minArea = 50
-params.maxArea = 10000
-params.minDistBetweenBlobs = 500
-params.filterByCircularity = True
-params.minCircularity = 0
-params.filterByConvexity = True
-params.minConvexity = 0
-params.filterByInertia = True
-params.minInertiaRatio = 0.1
-detector = cv2.SimpleBlobDetector_create(params)
-
 # Camera Settings
 RESOLUTION = (4032, 3040)
+rescale_factor=8
+crop_window = 80
+
+# Blob detector (High Resolution)
+params = cv2.SimpleBlobDetector_Params()
+params.filterByArea = True
+params.minArea = 70
+params.maxArea = 6000
+params.minDistBetweenBlobs = 50
+params.filterByCircularity = True
+params.minCircularity = 0.4
+params.filterByConvexity = True
+params.minConvexity = 0.2
+params.filterByInertia = True
+params.minInertiaRatio = 0.1
+detector_h = cv2.SimpleBlobDetector_create(params)
+
+# Blob detector (Rescaled Resolution)
+params_low = cv2.SimpleBlobDetector_Params()
+params_low.filterByArea = True
+params_low.minArea = int(params.minArea/rescale_factor)
+params_low.maxArea = int(params.maxArea*rescale_factor)
+params_low.minDistBetweenBlobs = int(params.minDistBetweenBlobs/rescale_factor)
+params_low.filterByCircularity = params.filterByCircularity
+params_low.minCircularity = params.minCircularity
+params_low.filterByConvexity = params.filterByConvexity
+params_low.minConvexity = params.minConvexity
+params_low.filterByInertia = params.filterByInertia
+params_low.minInertiaRatio = params.minInertiaRatio
+detector_l = cv2.SimpleBlobDetector_create(params_low)
+
+# Color detection thersholds (YUV)
+lower_range = np.array([  0,  0, 83])
+upper_range = np.array([233,255,255])
 
 # Camera matrix and distortion vector
 calib_file = np.load("camera_intrinsics.npz")
@@ -60,17 +80,25 @@ def flattenList(list):
 	return [item for sublist in list for item in sublist]
 
 def detectArucos(frame):
+	tic = time.perf_counter()
+	
 	aruco_dict = aruco.Dictionary_get(aruco.DICT_4X4_1000)
 	parameters =  aruco.DetectorParameters_create()
 	parameters.cornerRefinementMethod = aruco.CORNER_REFINE_SUBPIX
 	corners, ids, rejectedImgPoints = aruco.detectMarkers(frame, aruco_dict, parameters=parameters)
 	ret =  True if len(corners)!=0 else False
 
+	print(f"ArUco detection time: {time.perf_counter() - tic:0.4f} seconds")
+
 	return ret, corners, ids
 
 def undistortFrame(frame, mapx, mapy):
+	tic = time.perf_counter()
+	
 	# Remaps the frame pixels to their new positions 
 	frame = cv2.remap(frame, mapx, mapy, cv2.INTER_LINEAR)
+	
+	print(f"Undistort time: {time.perf_counter() - tic:0.4f} seconds")
 	return frame
 
 def drawCorner(frame, corner, i):
@@ -131,6 +159,8 @@ def drawRealWorld(x, y, frame):
 	cv2.putText(frame, txt, (x,y-10), font, fontScale/2, color1, thickness, cv2.LINE_AA)
 
 def organizeObjpp(markers, ids):
+	tic = time.perf_counter()
+	
 	# Flatten lists to make them more maneageable 
 	markers = flattenList(markers)
 	ids = flattenList(ids)
@@ -164,28 +194,54 @@ def organizeObjpp(markers, ids):
 			ii+=1
 	objpp=np.array(objpp)
 	
+	print(f"Organize Objpp time: {time.perf_counter() - tic:0.4f} seconds")
+	
 	return objpp, imgPts
 	
 
 def detectBlob(frame):
+	tic = time.perf_counter()
+
+	frame_low = cv2.resize(frame, (int(RESOLUTION[0]/rescale_factor),int(RESOLUTION[1]/rescale_factor)),interpolation = cv2.INTER_NEAREST) 
+
 	yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
+	yuv_low = cv2.cvtColor(frame_low, cv2.COLOR_BGR2YUV)
 
-	lower_range = np.array([0,0,83])
-	upper_range = np.array([233,255,255])
+	mask_low = cv2.inRange(yuv_low, lower_range, upper_range)
 
-	mask = cv2.inRange(yuv, lower_range, upper_range)
-	keypoints = detector.detect(mask)
+	# Blob detector
+	keypoints_low = detector_l.detect(mask_low)
+
+	leds_refined=[]
+
+	if keypoints_low:
+		leds_rough = [keypoint.pt for keypoint in keypoints_low]
+		leds_rough = [(int(x)*rescale_factor, int(y)*rescale_factor) for x,y in leds_rough]
+
+	for led in leds_rough:
+		x=int(led[0])
+		y=int(led[1])
+		yuv_crop = yuv[(y-crop_window):(y+crop_window), (x-crop_window):(x+crop_window)]
+		mask = cv2.inRange(yuv_crop, lower_range, upper_range)
+
+		keypoints_high = detector_h.detect(mask)
+		
+		for keypoint_high in keypoints_high:
+			led_refined = keypoint_high.pt
+			led_refined = (round(led_refined[0])+x-crop_window, round(led_refined[1])+y-crop_window)
+			leds_refined.append(led_refined)
+
+
+	print(leds_refined)
+	if leds_refined:
+		for led in leds_refined:
+			x=int(led[0])
+			y=int(led[1])
+			frame = cv2.line(frame, (x-30, y), (x+30, y),(0,0,255), 5)
+			frame = cv2.line(frame, (x, y-30), (x, y+30),(0,0,255), 5)
 	
-	if keypoints:
-		leds = [keypoint.pt for keypoint in keypoints]
-		
-		for led in leds:
-			led = (int(led[0]), int(led[1]))
-			frame = cv2.line(frame, (led[0]-30, led[1]), (led[0]+30, led[1]),(0,0,255), 4)
-			frame = cv2.line(frame, (led[0], led[1]-30), (led[0], led[1]+30),(0,0,255), 4)
-		
-	print(leds)
-	return mask
+	print(f"Blob detection time: {time.perf_counter() - tic:0.4f} seconds")
+	return frame, mask_low
 	
 
 # main
@@ -204,6 +260,8 @@ with picamera.PiCamera() as camera:
 	mapx, mapy = cv2.initUndistortRectifyMap(mtx, dist, None, newCameraMatrix, (w, h), cv2.CV_32FC1)
 
 	while True:
+		print("")
+		
 		tic=time.perf_counter()
 		camera.capture(capture, 'rgb')
 		
@@ -213,11 +271,13 @@ with picamera.PiCamera() as camera:
 		# Undistort frame
 		frame = undistortFrame(frame, mapx, mapy)
 		
+		yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV)
+		
 		# Detect LED blob
-		mask = detectBlob(frame)
+		frame, mask = detectBlob(frame)
 		
 		# Look for ArUco markers
-		valid_markers, markers, ids = detectArucos(frame)
+		valid_markers, markers, ids = detectArucos(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
 		
 		if valid_markers:
 			
@@ -240,30 +300,39 @@ with picamera.PiCamera() as camera:
 			print("Camera pos:\nx: %dmm\ny: %dmm\nz: %dmm" % (camera_pos[0], camera_pos[1], camera_pos[2]))
 			print("Camera ori:\nx: %.2fº\ny: %.2fº\nz: %.2fº" % (camera_ori[0], camera_ori[1], camera_ori[2]))
 			
-			# Reproject objp in the image plane
+			
+			# Reproject ArUco corners
 			projs, jac = cv2.projectPoints(objpp, rvecs, tvecs, mtx, None)
 			for proj in projs:
 				drawReprojection(frame, proj[0]) 
 			
-			# Reproject Points of Interest
+			'''
+			# Reproject testing points
 			projs1, jac1 = cv2.projectPoints(PoIs_proj, rvecs, tvecs, mtx, None)
 			for proj in projs1:
 				drawReprojection(frame, proj[0])
-
 			for poi in projs1:
 				poi=poi[0]
 				drawRealWorld(int(round(poi[0],0)), int(round(poi[1],0)), frame)
+			'''
 			
+			# Draw XY axis 
 			drawWorldAxis(frame)
+			
+			'''
+			# Draw information about camera pose
 			txt = f"Camera position (xyz): {float(camera_pos[0]):0.2f}, {float(camera_pos[1]):0.2f} , {float(camera_pos[2]):0.2f} mm"
 			cv2.putText(frame, txt, (700,100), font, fontScale, (255,255,255), thickness, cv2.LINE_AA)
 			txt = f"Euler angles (xyz): {float(camera_ori[0]):0.2f}, {float(camera_ori[1]):0.2f} , {float(camera_ori[2]):0.2f} deg"
 			cv2.putText(frame, txt, (700,200), font, fontScale, (255,255,255), thickness, cv2.LINE_AA)
+			'''
 		
-		#cv2.imwrite("a.jpg", mask)
+		mask = cv2.inRange(yuv, lower_range, upper_range)
+		cv2.imwrite("a.jpg", mask)
 		
 		toc = time.perf_counter()
 		print(f"Calibration time: {toc - tic:0.4f} seconds")
+		
 		cv2.imshow('mask', cv2.resize(mask, (int(RESOLUTION[0]/4), int(RESOLUTION[1]/4))))
 		cv2.imshow('Picamera',cv2.resize(frame, (int(RESOLUTION[0]/4), int(RESOLUTION[1]/4))))
 		
@@ -271,8 +340,8 @@ with picamera.PiCamera() as camera:
 		if key == ord('q'):
 			GPIO.output(2, GPIO.LOW)
 			break
-		if key == ord('l'):
+		if key == ord('l'): # Turn on the light
 			GPIO.output(2, GPIO.HIGH)
-		if key == ord('o'):
+		if key == ord('o'): # Turn off the light
 			GPIO.output(2, GPIO.LOW)
 

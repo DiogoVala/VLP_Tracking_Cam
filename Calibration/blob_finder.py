@@ -1,22 +1,23 @@
 import cv2
 import numpy as np
 import datetime
+from scipy.ndimage.filters import maximum_filter as maxf2D
 
 RESOLUTION = (4032, 3040)
 rescale_factor=8
+crop_window = 200
 
 frame = cv2.imread("a.jpg")
-
-frame_low = cv2.resize(frame, (int(RESOLUTION[0]/rescale_factor),int(RESOLUTION[1]/rescale_factor)),interpolation = cv2.INTER_NEAREST) 
+#frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
 # Blob detector (High Resolution)
 params = cv2.SimpleBlobDetector_Params()
 params.filterByArea = True
-params.minArea = 50
-params.maxArea = 10000
-params.minDistBetweenBlobs = 500
+params.minArea = 60
+params.maxArea = 6000
+params.minDistBetweenBlobs = 80
 params.filterByCircularity = True
-params.minCircularity = 0
+params.minCircularity = 0.3
 params.filterByConvexity = True
 params.minConvexity = 0
 params.filterByInertia = True
@@ -29,55 +30,56 @@ params_low.filterByArea = True
 params_low.minArea = int(params.minArea/rescale_factor)
 params_low.maxArea = int(params.maxArea*rescale_factor)
 params_low.minDistBetweenBlobs = int(params.minDistBetweenBlobs/rescale_factor)
-params_low.filterByCircularity = True
-params_low.minCircularity = 0
-params_low.filterByConvexity = True
-params_low.minConvexity = 0
-params_low.filterByInertia = True
-params_low.minInertiaRatio = 0.1
+params_low.filterByCircularity = params.filterByCircularity
+params_low.minCircularity = params.minCircularity
+params_low.filterByConvexity = params.filterByConvexity
+params_low.minConvexity = params.minConvexity
+params_low.filterByInertia = params.filterByInertia
+params_low.minInertiaRatio = params.minInertiaRatio
 detector_l = cv2.SimpleBlobDetector_create(params_low)
 
 # Resize high resolution to low resolution
 tic = datetime.datetime.now()
+
 frame_low = cv2.resize(frame, (int(RESOLUTION[0]/rescale_factor),int(RESOLUTION[1]/rescale_factor)),interpolation = cv2.INTER_NEAREST) 
 print("cv2.resize (s):",(datetime.datetime.now()-tic).microseconds/1000000)
 
 mask = frame_low
+cv2.imshow("Mask Low Resolution", mask)
 
 # Blob detector
 tic = datetime.datetime.now()
-keypoints = detector_l.detect(mask)
+keypoints_low = detector_l.detect(mask)
 print("Detect Low(s):",(datetime.datetime.now()-tic).microseconds/1000000)
 
-if keypoints:
-	coords = [keypoint.pt for keypoint in keypoints][0]
-	coords = (coords[0]*rescale_factor, coords[1]*rescale_factor)
+leds_refined=[]
 
-x=int(coords[0])
-y=int(coords[1])
+if keypoints_low:
+	leds_rough = [keypoint.pt for keypoint in keypoints_low]
+	leds_rough = [(int(x)*rescale_factor, int(y)*rescale_factor) for x,y in leds_rough]
 
-frame_crop = frame[(y-100):(y+100), (x-100):(x+100)]
-cv2.imshow("crop", frame_crop)
+for led in leds_rough:
+	x=int(led[0])
+	y=int(led[1])
+	frame_crop = frame[(y-crop_window):(y+crop_window), (x-crop_window):(x+crop_window)]
 
-mask = frame_crop
-
-# Blob detector
-tic = datetime.datetime.now()
-keypoints = detector_l.detect(mask)
-print("Detect High(s):",(datetime.datetime.now()-tic).microseconds/1000000)
+	keypoints_high = detector_h.detect(frame_crop)
 	
-if keypoints:
-	coords = [keypoint.pt for keypoint in keypoints][0]
-	coords = (int(coords[0]+x-100), int(coords[1]+y-100))
+	for keypoint_high in keypoints_high:
+		led_refined = keypoint_high.pt
+		led_refined = (round(led_refined[0])+x-crop_window, round(led_refined[1])+y-crop_window)
+		leds_refined.append(led_refined)
 
-print(coords)
 
-x=int(coords[0])
-y=int(coords[1])
+print(leds_refined)
+if leds_refined:
+	for led in leds_refined:
+		x=int(led[0])
+		y=int(led[1])
+		frame = cv2.line(frame, (x-30, y), (x+30, y),(0,0,255), 5)
+		frame = cv2.line(frame, (x, y-30), (x, y+30),(0,0,255), 5)
 
-frame = cv2.line(frame, (x-30, y), (x+30, y),(0,0,255), 2)
-frame = cv2.line(frame, (x, y-30), (x, y+30),(0,0,255), 2)
-
+	
 cv2.imshow("Keypoints", cv2.resize(frame,None,fx=0.3,fy=0.3))
 
 cv2.waitKey(0)

@@ -27,7 +27,7 @@ queue = queue.Queue()
 
 # Camera Settings and Startup
 RESOLUTION = (4032, 3040)
-rescale_factor = 8
+rescale_factor = 16
 crop_window = 100 
 
 #RESOLUTION = (2016, 1520)
@@ -120,6 +120,7 @@ def image_processor(frame):
     
     # Resize high resolution to low resolution
     tic = datetime.datetime.now()
+    total = tic
     frame_low = cv2.resize(frame, (int(RESOLUTION[0]/rescale_factor),int(RESOLUTION[1]/rescale_factor)),interpolation = cv2.INTER_NEAREST) 
     print("cv2.resize (s):",(datetime.datetime.now()-tic).microseconds/1000000)
     
@@ -149,7 +150,7 @@ def image_processor(frame):
     
     # Blob detector
     tic = datetime.datetime.now()
-    keypoints = detector_l.detect(mask)
+    keypoints = detector_h.detect(mask)
     print("Detect High(s):",(datetime.datetime.now()-tic).microseconds/1000000)
 		
     if keypoints:
@@ -166,6 +167,7 @@ def image_processor(frame):
     
     print(tuple(undistorted_coords), tuple([round(float(realWorld_coords[0]),2), round(float(realWorld_coords[1]),2)]))
     
+    print("Total processing time (s):",(datetime.datetime.now()-total).microseconds/1000000)
     #queue.put(realWorld_coords)
     
     return
