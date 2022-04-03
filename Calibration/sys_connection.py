@@ -5,6 +5,7 @@ PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
 
 class Socket_Server(threading.Thread):
     def __init__(self):
+        self.terminated = False
         self.s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind((HOST, PORT))
         s.listen()
@@ -16,9 +17,11 @@ class Socket_Server(threading.Thread):
             while not self.terminated::
                 self.rxdata = conn.recv(1024)
                 if not self.rxdata:
-                    break
-                self.data = eval(self.rxdata)
-                conn.sendall(data)
+                    self.terminated = True
+                else:
+                    self.data = eval(self.rxdata)
+                    conn.sendall(data) # Reply with same data
+                    self.event.set() # Set event signal on data acquisition
             s.close()
 	    
 class Socket_Client(threading.Thread):
@@ -26,9 +29,17 @@ class Socket_Client(threading.Thread):
         self.s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((HOST, PORT))
         self.txdata=None
+        self.terminated = False
 	
     def run(self):
         while not self.terminated:
             if self.event.wait(1):
-                s.sendall(str.encode(str(self.txdata)))
+                try:
+                    s.sendall(str.encode(str(self.txdata)))
+                except:
+                    print("Could not send data to server.")
+                    s.close()
+                    self.terminated = True
+                finally:
+                    self.event.clear()
         s.close()
