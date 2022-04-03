@@ -1,20 +1,22 @@
 import socket
+import threading
 
 HOST = "192.168.91.11"  # Standard loopback interface address (localhost)
 PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
 
 class Socket_Server(threading.Thread):
     def __init__(self):
+        print("Initiating socket server")
         self.terminated = False
         self.s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind((HOST, PORT))
-        s.listen()
-        conn, addr = s.accept()
-        print(f"Connected by client {addr}")
+        self.s.bind((HOST, PORT))
+        self.s.listen()
+        self.conn, self.addr = self.s.accept()
+        print(f"Connected by client {self.addr}")
 	
     def run(self):
-        with conn:
-            while not self.terminated::
+        with self.conn:
+            while not self.terminated:
                 self.rxdata = conn.recv(1024)
                 if not self.rxdata:
                     self.terminated = True
@@ -22,12 +24,12 @@ class Socket_Server(threading.Thread):
                     self.data = eval(self.rxdata)
                     conn.sendall(data) # Reply with same data
                     self.event.set() # Set event signal on data acquisition
-            s.close()
+            self.s.close()
 	    
 class Socket_Client(threading.Thread):
     def __init__(self):
         self.s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect((HOST, PORT))
+        self.s.connect((HOST, PORT))
         self.txdata=None
         self.terminated = False
 	
@@ -35,10 +37,10 @@ class Socket_Client(threading.Thread):
         while not self.terminated:
             if self.event.wait(1):
                 try:
-                    s.sendall(str.encode(str(self.txdata)))
+                    self.s.sendall(str.encode(str(self.txdata)))
                 except:
                     print("Could not send data to server.")
-                    s.close()
+                    self.s.close()
                     self.terminated = True
                 finally:
                     self.event.clear()
