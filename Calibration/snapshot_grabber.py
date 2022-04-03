@@ -3,11 +3,12 @@ import time
 import sys
 import os
 import picamera
+from picamera.array import PiRGBArray
 import numpy as np
 
 # Settings
-FRAME_WIDTH = 2016
-FRAME_HEIGHT = 1520
+FRAME_WIDTH = 1920
+FRAME_HEIGHT = 1080
 SAVE_FOLDER = "./snapshots_"+str(FRAME_WIDTH)+"x"+str(FRAME_HEIGHT)
 FILE_NAME = "snapshot"
 
@@ -28,13 +29,17 @@ def save_snaps(width, height, name, folder):
     with picamera.PiCamera() as camera:
         print (f"Saving snapshots with resolution {width}x{height}.")
         print ("Press SPACE to capture.")
+        
         camera.resolution=(width, height)
-        frame = np.empty((height, width, 3), dtype=np.uint8) 
+        capture = PiRGBArray(camera, size=(width, height))
             
         nSnap=0
         fileName    = "%s/%s_%d_%d_" %(folder, name, width, height)
         while True:
-            camera.capture(frame, 'rgb')
+    
+            camera.capture(capture, 'rgb')
+            frame = capture.array
+            capture.truncate(0)
             
             frame_g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 

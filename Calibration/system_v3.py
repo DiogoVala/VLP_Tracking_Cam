@@ -13,8 +13,7 @@ import math
 from scipy.spatial.transform import Rotation
 from numpy.linalg import inv
 from sys_calibration_bare import *
-import copy
-
+from sys_connection import *
 
 # Run system calibration before starting camera
 valid_markers, camera_pos, camera_ori, mapx, mapy, cameraMatrix, cameraDistortion, newCameraMatrix, rmat, tvec = runCalibration()
@@ -178,6 +177,8 @@ def image_processor(frame):
 	for coord in realWorld_coords:
 		coord.tolist()
 		print((coord[0][0], coord[1][0]))
+		
+	print("Camera coordinates:", camera_pos)
 
 	print("Total processing time (s):",(datetime.datetime.now()-total).microseconds/1000000)
 	#queue.put(realWorld_coords)
@@ -226,7 +227,8 @@ def streams():
 			# When the pool is starved, wait a while for it to refill
 			break
 			#time.sleep(0.1)
-
+			
+socker_sv = Socket_Server()
 pool = [ImageProcessor(image_processor) for i in range(3)]
 start = datetime.datetime.now()
 prev_frame_time = datetime.datetime.now()
