@@ -1,5 +1,6 @@
 import socket
 import threading
+import time
 
 HOST = "192.168.91.11"  # Standard loopback interface address (localhost)
 PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
@@ -31,9 +32,20 @@ class Socket_Server(threading.Thread):
 class Socket_Client(threading.Thread):
     def __init__(self):
         self.terminated = False
+        self.connected = False
+        self.connecting_retries = 10
         self.event = threading.Event()
         self.s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.connect((HOST, PORT))
+        while not self.connected:
+            try:
+                self.s.connect((HOST, PORT))
+                self.connected = True
+            except:
+                self.connecting_retries -= 1
+                print("Connection failed.")
+                if self.connecting_retries == 0:
+                    break
+                print("Retrying connection")
         self.txdata=None
 	
     def run(self):

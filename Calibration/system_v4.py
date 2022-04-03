@@ -107,13 +107,13 @@ def image_processor(frame):
 
 	global Nframes, done
 	with lock:
-		print("Acquired frames", Nframes)
+		#print("Acquired frames", Nframes)
 		Nframes+=1
 
 	if Nframes > 100:
 		stop = datetime.datetime.now()
 		elapsed = (stop - start).total_seconds()
-		print("Framerate:",Nframes/elapsed)
+		#print("Framerate:",Nframes/elapsed)
 		with lock:
 			done=True
 
@@ -161,26 +161,29 @@ def image_processor(frame):
 
 	tic = datetime.datetime.now()
 	undistorted_coords = cv2.undistortPoints(leds_refined, cameraMatrix, cameraDistortion, None, newCameraMatrix)
-	print("cv2.undistortPoints (s):",(datetime.datetime.now()-tic).microseconds/1000000)
+	#print("cv2.undistortPoints (s):",(datetime.datetime.now()-tic).microseconds/1000000)
 
 	tic = datetime.datetime.now()
 	realWorld_coords = []
 	for coord in undistorted_coords:
 		realWorld_coords.append(getWorldCoordsAtZ(coord[0], 0, cameraMatrix, rmat, tvec))
-	print("getWorldCoordsAtZ (s):",(datetime.datetime.now()-tic).microseconds/1000000)
+	#print("getWorldCoordsAtZ (s):",(datetime.datetime.now()-tic).microseconds/1000000)
 
-	print("Pixel coordinates:")
-	for coord in undistorted_coords:
-		print((coord[0][0], coord[0][1]))
+	#print("Pixel coordinates:")
+	#for coord in undistorted_coords:
+		#print((coord[0][0], coord[0][1]))
 
-	print("Real world coordinates:")
+	#print("Real world coordinates:")
+	'''
 	for coord in realWorld_coords:
 		coord.tolist()
-		print((coord[0][0], coord[1][0]))
-		
-	print("Camera coordinates:", camera_pos)
+		socket_clt.txdata=(coord[0][0], coord[1][0])
+		socket_clt.event.set()
+		#print((coord[0][0], coord[1][0]))
+	'''
+	#print("Camera coordinates:", camera_pos)
 
-	print("Total processing time (s):",(datetime.datetime.now()-total).microseconds/1000000)
+	#print("Total processing time (s):",(datetime.datetime.now()-total).microseconds/1000000)
 	#queue.put(realWorld_coords)
 
 	return
