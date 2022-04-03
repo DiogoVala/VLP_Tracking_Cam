@@ -21,6 +21,7 @@ class Socket_Server(threading.Thread):
                 if not self.rxdata:
                     self.terminated = True
                 else:
+                    print("Received:", eval(self.rxdata))
                     self.data = eval(self.rxdata)
                     conn.sendall(data) # Reply with same data
                     self.event.set() # Set event signal on data acquisition
@@ -37,6 +38,7 @@ class Socket_Client(threading.Thread):
         while not self.terminated:
             if self.event.wait(1):
                 try:
+                    print("Sending:", str.encode(str(self.txdata)))
                     self.s.sendall(str.encode(str(self.txdata)))
                 except:
                     print("Could not send data to server.")
