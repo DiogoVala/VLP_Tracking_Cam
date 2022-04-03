@@ -8,6 +8,7 @@ class Socket_Server(threading.Thread):
     def __init__(self):
         print("Initiating socket server")
         self.terminated = False
+        self.event = threading.Event()
         self.s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.bind((HOST, PORT))
         self.s.listen()
@@ -29,10 +30,11 @@ class Socket_Server(threading.Thread):
 	    
 class Socket_Client(threading.Thread):
     def __init__(self):
+        self.terminated = False
+        self.event = threading.Event()
         self.s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.connect((HOST, PORT))
         self.txdata=None
-        self.terminated = False
 	
     def run(self):
         while not self.terminated:
