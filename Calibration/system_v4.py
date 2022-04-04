@@ -14,6 +14,8 @@ from scipy.spatial.transform import Rotation
 from numpy.linalg import inv
 from sys_calibration_bare import *
 from sys_connection import *
+from numpy import array, cross
+from numpy.linalg import solve, norm
 
 # Run system calibration before starting camera
 valid_markers, camera_pos, camera_ori, mapx, mapy, cameraMatrix, cameraDistortion, newCameraMatrix, rmat, tvec = runCalibration()
@@ -74,6 +76,8 @@ detector_l = cv2.SimpleBlobDetector_create(params_low)
 lower_range = np.array([  0,  0, 83])
 upper_range = np.array([233,255,255])
 
+this_cam_data=None
+
 # Returns (x,y) real world coordinates at height z.
 def getWorldCoordsAtZ(image_point, z, mtx, rmat, tvec):
 
@@ -99,13 +103,12 @@ def getWorldCoordsAtZ(image_point, z, mtx, rmat, tvec):
 
 	return wcPoint
 
-
 Nframes=0 # Number of processed frames
 # Processing pipeline for each frame
 def image_processor(frame):
 	#print("Processing frame")
 
-	global Nframes, done
+	global Nframes, done, this_cam_data
 	with lock:
 		#print("Acquired frames", Nframes)
 		Nframes+=1
@@ -174,13 +177,12 @@ def image_processor(frame):
 		#print((coord[0][0], coord[0][1]))
 
 	#print("Real world coordinates:")
-	'''
+	
 	for coord in realWorld_coords:
 		coord.tolist()
-		socket_clt.txdata=(coord[0][0], coord[1][0])
-		socket_clt.event.set()
+		this_cam_data=[(coord[0][0], coord[1][0]), (camera_pos[0][0],camera_pos[1][0],camera_pos[2][0])]
 		#print((coord[0][0], coord[1][0]))
-	'''
+	
 	#print("Camera coordinates:", camera_pos)
 
 	#print("Total processing time (s):",(datetime.datetime.now()-total).microseconds/1000000)
@@ -203,7 +205,7 @@ class ImageProcessor(threading.Thread):
 			# Wait for an image to be written to the stream
 			if self.event.wait(1):
 				try:
-					print(f"\n{threading.current_thread()} at: {datetime.datetime.now()}")
+					#print(f"\n{threading.current_thread()} at: {datetime.datetime.now()}")
 					self.stream.seek(0)
 					frame = self.stream.array
 					self.processor_fcn(frame) # Call function to process frame
@@ -214,6 +216,54 @@ class ImageProcessor(threading.Thread):
 					with lock:
 						pool.append(self)
 
+def intersect(other_cam_data):
+	P0=np.array([this_cam_data[1][0], this_cam_data[1][1], this_cam_data[1][2]], [other_cam_data[1][0], other_cam_data[1][1], other_cam_data[1][2]])
+	P0=np.array([this_cam_data[0][0], this_cam_data[0][1], 0], [other_cam_data[0][0], other_cam_data[0][1], 0])
+	
+	"""P0 and P1 are NxD arrays defining N lines.
+	D is the dimension of the space. This function 
+	returns the least squares intersection of the N
+	lines from the system given by eq. 13 in 
+	http://cal.cs.illinois.edu/~johannes/research/LS_line_intersect.pdf.
+	"""
+	# generate all line direction vectors 
+	n = (P1-P0)/np.linalg.norm(P1-P0,axis=1)[:,np.newaxis] # normalized
+
+	# generate the array of all projectors 
+	projs = np.eye(n.shape[1]) - n[:,:,np.newaxis]*n[:,np.newaxis]  # I - n*n.T
+	# see fig. 1 
+
+	# generate R matrix and q vector
+	R = projs.sum(axis=0)
+	q = (projs @ P0[:,:,np.newaxis]).sum(axis=0)
+
+	# solve the least squares problem for the 
+	# intersection point p: Rp = q
+	p = np.linalg.lstsq(R,q,rcond=None)[0]
+
+	return p
+
+def calc3Dpos(other_cam_data):
+	# define lines A and B by two points
+	print(this_cam_data)
+	print(other_cam_data)
+	XA0 = array([this_cam_data[0][0], this_cam_data[0][1], 0])
+	XA1 = array([this_cam_data[1][0], this_cam_data[1][1], this_cam_data[1][2]])
+	XB0 = array([other_cam_data[0][0], other_cam_data[0][1], 0])
+	XB1 = array([other_cam_data[1][0], other_cam_data[1][1], other_cam_data[1][2]])
+
+	# compute unit vectors of directions of lines A and B
+	UA = (XA1 - XA0) / norm(XA1 - XA0)
+	UB = (XB1 - XB0) / norm(XB1 - XB0)
+	# find unit direction vector for line C, which is perpendicular to lines A and B
+	UC = cross(UB, UA); UC /= norm(UC)
+
+	# solve the system derived in user2255770's answer from StackExchange: https://math.stackexchange.com/q/1993990
+	RHS = XB0 - XA0
+	LHS = array([UA, -UB, UC]).T
+	print("Led position", solve(LHS, RHS))
+	
+	
 # Generator of buffers for the capture_sequence method.
 # Each buffer belongs to an ImageProcessor so each frame is sent to a different thread.
 def streams():
@@ -231,7 +281,7 @@ def streams():
 			break
 			#time.sleep(0.1)
 			
-socket_sv = Socket_Server()
+socket_sv = Socket_Server(intersect)
 pool = [ImageProcessor(image_processor) for i in range(3)]
 start = datetime.datetime.now()
 prev_frame_time = datetime.datetime.now()

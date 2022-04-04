@@ -6,7 +6,9 @@ HOST = "192.168.91.11"  # Standard loopback interface address (localhost)
 PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
 
 class Socket_Server(threading.Thread):
-    def __init__(self):
+    def __init__(self, output_fcn):
+        super(Socket_Server, self).__init__()
+        self.output_fcn = output_fcn
         print("Initiating socket server.")
         self.terminated = False
         self.event = threading.Event()
@@ -17,12 +19,12 @@ class Socket_Server(threading.Thread):
         self.s.listen()
         self.conn, self.addr = self.s.accept()
         print(f"Connected by client {self.addr}")
+        self.start()
 	
     def run(self):
         with self.conn:
             print("Server connection valid.")
             while not self.terminated:
-                print("Server on")
                 self.rxdata = self.conn.recv(1024)
                 self.rxdata = self.rxdata.decode('utf-8')
                 if not self.rxdata:
@@ -30,13 +32,14 @@ class Socket_Server(threading.Thread):
                     self.terminated = True
                 else:
                     print("Received:", eval(self.rxdata))
-                    self.data = eval(self.rxdata)
-                    conn.sendall(data) # Reply with same data
+                    self.rxdata = eval(self.rxdata)
+                    self.output_fcn(self.rxdata)
                     self.event.set() # Set event signal on data acquisition
             self.s.close()
 	    
 class Socket_Client(threading.Thread):
     def __init__(self):
+        super(Socket_Client, self).__init__()
         self.terminated = False
         self.connected = False
         self.connecting_retries = 10
@@ -48,6 +51,7 @@ class Socket_Client(threading.Thread):
             try:
                 self.s.connect((HOST, PORT))
                 self.connected = True
+                self.start()
             except:
                 self.connecting_retries -= 1
                 print("Connection failed.")
@@ -61,7 +65,7 @@ class Socket_Client(threading.Thread):
     def run(self):
         while not self.terminated:
             print("Client on")
-            if self.event.wait(10):
+            if self.event.wait():
                 try:
                     print("Sending:", str.encode(str(self.txdata)))
                     self.s.send(str.encode(str(self.txdata)))
