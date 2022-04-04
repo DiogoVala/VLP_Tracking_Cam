@@ -12,6 +12,7 @@ class Socket_Server(threading.Thread):
         self.event = threading.Event()
         self.s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.bind((HOST, PORT))
+        self.rxdata = None
         print("Waiting for client connection.")
         self.s.listen()
         self.conn, self.addr = self.s.accept()
@@ -19,8 +20,11 @@ class Socket_Server(threading.Thread):
 	
     def run(self):
         with self.conn:
+            print("Server connection valid.")
             while not self.terminated:
-                self.rxdata = conn.recv(1024)
+                print("Server on")
+                self.rxdata = self.conn.recv(1024)
+                self.rxdata = rxdata.decode('utf-8')
                 if not self.rxdata:
                     print("Terminating socket server")
                     self.terminated = True
@@ -39,6 +43,7 @@ class Socket_Client(threading.Thread):
         self.event = threading.Event()
         self.s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.txdata=None
+        
         while not self.connected:
             try:
                 self.s.connect((HOST, PORT))
@@ -57,7 +62,7 @@ class Socket_Client(threading.Thread):
             if self.event.wait(1):
                 try:
                     print("Sending:", str.encode(str(self.txdata)))
-                    self.s.sendall(str.encode(str(self.txdata)))
+                    self.s.send(str.encode(str(self.txdata)))
                 except:
                     print("Could not send data to server.")
                     self.s.close()
