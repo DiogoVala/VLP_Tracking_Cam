@@ -176,7 +176,7 @@ def image_processor(frame):
 	#print("Real world coordinates:")
 	for coord in realWorld_coords:
 		coord.tolist()
-		socket_clt.txdata=(coord[0][0], coord[1][0])
+		socket_clt.txdata=[(coord[0][0], coord[1][0]), (camera_pos[0][0],camera_pos[1][0],camera_pos[2][0])]
 		socket_clt.event.set()
 		#print((coord[0][0], coord[1][0]))
 		
@@ -202,7 +202,7 @@ class ImageProcessor(threading.Thread):
 			# Wait for an image to be written to the stream
 			if self.event.wait(1):
 				try:
-					print(f"\n{threading.current_thread()} at: {datetime.datetime.now()}")
+					#print(f"\n{threading.current_thread()} at: {datetime.datetime.now()}")
 					self.stream.seek(0)
 					frame = self.stream.array
 					self.processor_fcn(frame) # Call function to process frame
