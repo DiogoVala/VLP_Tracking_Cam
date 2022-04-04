@@ -24,7 +24,7 @@ class Socket_Server(threading.Thread):
             while not self.terminated:
                 print("Server on")
                 self.rxdata = self.conn.recv(1024)
-                self.rxdata = rxdata.decode('utf-8')
+                self.rxdata = self.rxdata.decode('utf-8')
                 if not self.rxdata:
                     print("Terminating socket server")
                     self.terminated = True
@@ -53,6 +53,7 @@ class Socket_Client(threading.Thread):
                 print("Connection failed.")
                 if self.connecting_retries == 0:
                     self.terminated = True
+                    print(f"Could not find server at {HOST}.")
                     break
                 print("Retrying connection.")
                 time.sleep(1)
@@ -60,7 +61,7 @@ class Socket_Client(threading.Thread):
     def run(self):
         while not self.terminated:
             print("Client on")
-            if self.event.wait(1):
+            if self.event.wait(10):
                 try:
                     print("Sending:", str.encode(str(self.txdata)))
                     self.s.send(str.encode(str(self.txdata)))
@@ -70,4 +71,7 @@ class Socket_Client(threading.Thread):
                     self.terminated = True
                 finally:
                     self.event.clear()
-        s.close()
+        try:
+            s.close()
+        except:
+            pass
