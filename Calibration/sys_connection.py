@@ -7,11 +7,12 @@ PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
 
 class Socket_Server(threading.Thread):
     def __init__(self):
-        print("Initiating socket server")
+        print("Initiating socket server.")
         self.terminated = False
         self.event = threading.Event()
         self.s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.bind((HOST, PORT))
+        print("Waiting for client connection.")
         self.s.listen()
         self.conn, self.addr = self.s.accept()
         print(f"Connected by client {self.addr}")
@@ -21,6 +22,7 @@ class Socket_Server(threading.Thread):
             while not self.terminated:
                 self.rxdata = conn.recv(1024)
                 if not self.rxdata:
+                    print("Terminating socket server")
                     self.terminated = True
                 else:
                     print("Received:", eval(self.rxdata))
@@ -36,6 +38,7 @@ class Socket_Client(threading.Thread):
         self.connecting_retries = 10
         self.event = threading.Event()
         self.s=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.txdata=None
         while not self.connected:
             try:
                 self.s.connect((HOST, PORT))
@@ -45,11 +48,12 @@ class Socket_Client(threading.Thread):
                 print("Connection failed.")
                 if self.connecting_retries == 0:
                     break
-                print("Retrying connection")
-        self.txdata=None
-	
+                print("Retrying connection.")
+                time.sleep(1)
+        
     def run(self):
         while not self.terminated:
+            print("Client on")
             if self.event.wait(1):
                 try:
                     print("Sending:", str.encode(str(self.txdata)))
