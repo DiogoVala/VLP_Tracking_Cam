@@ -52,6 +52,7 @@ class Socket_Client(threading.Thread):
                 self.connecting_retries -= 1
                 print("Connection failed.")
                 if self.connecting_retries == 0:
+                    self.terminated = True
                     break
                 print("Retrying connection.")
                 time.sleep(1)
