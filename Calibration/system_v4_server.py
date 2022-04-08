@@ -23,10 +23,9 @@ if(valid_markers == 0):
 	print("Exiting program.")
 	quit()
 
-done = False # Global to indicate end of processing (To stop threads)
-lock = threading.Lock() #
+# Thread managing stuff
+lock = threading.Lock() # Interprocess variable for mutual exclusion
 pool = [] # Pool of ImageProcessor threads
-queue = queue.Queue()
 
 # Camera Settings and Startup
 RESOLUTION = (4032, 3040)
@@ -44,7 +43,7 @@ frame_T_ms=242 # Time between frames. Adjusted for frame acquisition delay
 print("Camera warming up.")
 time.sleep(1)
 
-# Blob detector (High Resolution)
+# Blob detector settings (High Resolution)
 params = cv2.SimpleBlobDetector_Params()
 params.filterByArea = True
 params.minArea = 50
@@ -58,7 +57,7 @@ params.filterByInertia = True
 params.minInertiaRatio = 0.1
 detector_h = cv2.SimpleBlobDetector_create(params)
 
-# Blob detector (Rescaled Resolution)
+# Blob detector settings (Rescaled Resolution)
 params_low = cv2.SimpleBlobDetector_Params()
 params_low.filterByArea = True
 params_low.minArea = int(params.minArea/rescale_factor)
@@ -76,6 +75,7 @@ detector_l = cv2.SimpleBlobDetector_create(params_low)
 lower_range = np.array([  0,  0, 83])
 upper_range = np.array([233,255,255])
 
+# LED position data from this camera
 this_cam_data=None
 
 # Returns (x,y) real world coordinates at height z.
@@ -103,24 +103,9 @@ def getWorldCoordsAtZ(image_point, z, mtx, rmat, tvec):
 
 	return wcPoint
 
-Nframes=0 # Number of processed frames
 # Processing pipeline for each frame
 def image_processor(frame):
-	#print("Processing frame")
-
-	global Nframes, done, this_cam_data
-	with lock:
-		#print("Acquired frames", Nframes)
-		Nframes+=1
-
-	if Nframes > 100:
-		stop = datetime.datetime.now()
-		elapsed = (stop - start).total_seconds()
-		#print("Framerate:",Nframes/elapsed)
-		with lock:
-			done=True
-
-	total = datetime.datetime.now()
+	global this_cam_data
 
 	# Resize high resolution to low resolution
 	frame_low = cv2.resize(frame, (int(RESOLUTION[0]/rescale_factor),int(RESOLUTION[1]/rescale_factor)),interpolation = cv2.INTER_NEAREST)
@@ -136,58 +121,35 @@ def image_processor(frame):
 		leds_rough = [keypoint.pt for keypoint in keypoints_low]
 		leds_rough = [(int(x)*rescale_factor, int(y)*rescale_factor) for x,y in leds_rough]
 
-	# Crop frame around each LED
-	leds_refined=[]
-	for led in leds_rough:
-		x=int(led[0])
-		y=int(led[1])
-		yuv_crop = frame[(y-crop_window):(y+crop_window), (x-crop_window):(x+crop_window)]
-		mask = cv2.inRange(yuv_crop, lower_range, upper_range)
-
-		# Look for blobs in each cropped region
-		keypoints_high = detector_h.detect(mask)
-
-		# Refine LED positions
-		for keypoint_high in keypoints_high:
-			led_refined = keypoint_high.pt
-			led_refined = (round(led_refined[0])+x-crop_window, round(led_refined[1])+y-crop_window)
-			leds_refined.append(led_refined)
-
-	if leds_refined:
-		for led in leds_refined:
+		# Crop frame around each LED
+		leds_refined=[]
+		for led in leds_rough:
 			x=int(led[0])
 			y=int(led[1])
-			frame = cv2.line(frame, (x-30, y), (x+30, y),(0,0,255), 5)
-			frame = cv2.line(frame, (x, y-30), (x, y+30),(0,0,255), 5)
+			yuv_crop = frame[(y-crop_window):(y+crop_window), (x-crop_window):(x+crop_window)]
+			mask = cv2.inRange(yuv_crop, lower_range, upper_range)
 
-	leds_refined = np.array(leds_refined, dtype=np.float32)
+			# Look for blobs in each cropped region
+			keypoints_high = detector_h.detect(mask)
 
-	tic = datetime.datetime.now()
-	undistorted_coords = cv2.undistortPoints(leds_refined, cameraMatrix, cameraDistortion, None, newCameraMatrix)
-	#print("cv2.undistortPoints (s):",(datetime.datetime.now()-tic).microseconds/1000000)
+			# Refine LED positions
+			for keypoint_high in keypoints_high:
+				led_refined = keypoint_high.pt
+				led_refined = (round(led_refined[0])+x-crop_window, round(led_refined[1])+y-crop_window)
+				leds_refined.append(led_refined)
 
-	tic = datetime.datetime.now()
-	realWorld_coords = []
-	for coord in undistorted_coords:
-		realWorld_coords.append(getWorldCoordsAtZ(coord[0], 0, cameraMatrix, rmat, tvec))
-	#print("getWorldCoordsAtZ (s):",(datetime.datetime.now()-tic).microseconds/1000000)
+		if leds_refined:
+			leds_refined = np.array(leds_refined, dtype=np.float32)
 
-	#print("Pixel coordinates:")
-	#for coord in undistorted_coords:
-		#print((coord[0][0], coord[0][1]))
+			undistorted_coords = cv2.undistortPoints(leds_refined, cameraMatrix, cameraDistortion, None, newCameraMatrix)
 
-	#print("Real world coordinates:")
-	
-	for coord in realWorld_coords:
-		coord.tolist()
-		this_cam_data=[(coord[0][0], coord[1][0]), (camera_pos[0][0],camera_pos[1][0],camera_pos[2][0])]
-		#print((coord[0][0], coord[1][0]))
-	
-	#print("Camera coordinates:", camera_pos)
+			realWorld_coords = []
+			for coord in undistorted_coords:
+				realWorld_coords.append(getWorldCoordsAtZ(coord[0], 0, cameraMatrix, rmat, tvec))														
 
-	#print("Total processing time (s):",(datetime.datetime.now()-total).microseconds/1000000)
-	#queue.put(realWorld_coords)
-
+			for coord in realWorld_coords:
+				coord.tolist()
+				this_cam_data=[(coord[0][0], coord[1][0]), (camera_pos[0][0],camera_pos[1][0],camera_pos[2][0])]
 	return
 
 class ImageProcessor(threading.Thread):
@@ -217,53 +179,37 @@ class ImageProcessor(threading.Thread):
 						pool.append(self)
 
 def intersect(other_cam_data):
-	P0=np.array([this_cam_data[1][0], this_cam_data[1][1], this_cam_data[1][2]], [other_cam_data[1][0], other_cam_data[1][1], other_cam_data[1][2]])
-	P0=np.array([this_cam_data[0][0], this_cam_data[0][1], 0], [other_cam_data[0][0], other_cam_data[0][1], 0])
-	
-	"""P0 and P1 are NxD arrays defining N lines.
-	D is the dimension of the space. This function 
-	returns the least squares intersection of the N
-	lines from the system given by eq. 13 in 
-	http://cal.cs.illinois.edu/~johannes/research/LS_line_intersect.pdf.
-	"""
-	# generate all line direction vectors 
-	n = (P1-P0)/np.linalg.norm(P1-P0,axis=1)[:,np.newaxis] # normalized
+	try:
+		P0=np.array([[this_cam_data[1][0], this_cam_data[1][1], this_cam_data[1][2]], [other_cam_data[1][0], other_cam_data[1][1], other_cam_data[1][2]]])
+		P1=np.array([[this_cam_data[0][0], this_cam_data[0][1], 0], [other_cam_data[0][0], other_cam_data[0][1], 0]])
+		
+		
+		"""P0 and P1 are NxD arrays defining N lines.
+		D is the dimension of the space. This function 
+		returns the least squares intersection of the N
+		lines from the system given by eq. 13 in 
+		http://cal.cs.illinois.edu/~johannes/research/LS_line_intersect.pdf.
+		"""
+		# generate all line direction vectors 
+		n = (P1-P0)/np.linalg.norm(P1-P0,axis=1)[:,np.newaxis] # normalized
 
-	# generate the array of all projectors 
-	projs = np.eye(n.shape[1]) - n[:,:,np.newaxis]*n[:,np.newaxis]  # I - n*n.T
-	# see fig. 1 
+		# generate the array of all projectors 
+		projs = np.eye(n.shape[1]) - n[:,:,np.newaxis]*n[:,np.newaxis]  # I - n*n.T
 
-	# generate R matrix and q vector
-	R = projs.sum(axis=0)
-	q = (projs @ P0[:,:,np.newaxis]).sum(axis=0)
+		# generate R matrix and q vector
+		R = projs.sum(axis=0)
+		q = (projs @ P0[:,:,np.newaxis]).sum(axis=0)
 
-	# solve the least squares problem for the 
-	# intersection point p: Rp = q
-	p = np.linalg.lstsq(R,q,rcond=None)[0]
+		# solve the least squares problem for the 
+		# intersection point p: Rp = q
+		p = np.linalg.lstsq(R,q,rcond=None)[0]
+		
+		print(f"LED at (%.2f, %.2f, %.2f)" % (round(p[0][0],2), round(p[1][0],2), round(p[2][0],2)) )
+		return p
+	except:
+		print("Invalid data")
+		return None
 
-	return p
-
-def calc3Dpos(other_cam_data):
-	# define lines A and B by two points
-	print(this_cam_data)
-	print(other_cam_data)
-	XA0 = array([this_cam_data[0][0], this_cam_data[0][1], 0])
-	XA1 = array([this_cam_data[1][0], this_cam_data[1][1], this_cam_data[1][2]])
-	XB0 = array([other_cam_data[0][0], other_cam_data[0][1], 0])
-	XB1 = array([other_cam_data[1][0], other_cam_data[1][1], other_cam_data[1][2]])
-
-	# compute unit vectors of directions of lines A and B
-	UA = (XA1 - XA0) / norm(XA1 - XA0)
-	UB = (XB1 - XB0) / norm(XB1 - XB0)
-	# find unit direction vector for line C, which is perpendicular to lines A and B
-	UC = cross(UB, UA); UC /= norm(UC)
-
-	# solve the system derived in user2255770's answer from StackExchange: https://math.stackexchange.com/q/1993990
-	RHS = XB0 - XA0
-	LHS = array([UA, -UB, UC]).T
-	print("Led position", solve(LHS, RHS))
-	
-	
 # Generator of buffers for the capture_sequence method.
 # Each buffer belongs to an ImageProcessor so each frame is sent to a different thread.
 def streams():
@@ -277,9 +223,7 @@ def streams():
 			yield processor.stream
 			processor.event.set()
 		else:
-			# When the pool is starved, wait a while for it to refill
 			break
-			#time.sleep(0.1)
 			
 socket_sv = Socket_Server(intersect)
 pool = [ImageProcessor(image_processor) for i in range(3)]
@@ -294,3 +238,4 @@ while pool:
 		processor = pool.pop()
 	processor.terminated = True
 	processor.join()
+socket_sv.join()

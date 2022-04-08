@@ -31,7 +31,7 @@ class Socket_Server(threading.Thread):
                     print("Terminating socket server")
                     self.terminated = True
                 else:
-                    print("Received:", eval(self.rxdata))
+                    #print("Received:", eval(self.rxdata))
                     self.rxdata = eval(self.rxdata)
                     self.output_fcn(self.rxdata)
                     self.event.set() # Set event signal on data acquisition
@@ -64,11 +64,11 @@ class Socket_Client(threading.Thread):
         
     def run(self):
         while not self.terminated:
-            print("Client on")
             if self.event.wait():
                 try:
-                    print("Sending:", str.encode(str(self.txdata)))
-                    self.s.send(str.encode(str(self.txdata)))
+                    message=str.encode(str(self.txdata))
+                    print("Sending:", message)
+                    self.s.send(message)
                 except:
                     print("Could not send data to server.")
                     self.s.close()
