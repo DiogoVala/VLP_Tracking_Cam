@@ -157,11 +157,10 @@ def image_processor(frame):
 			for coord in undistorted_coords:
 				realWorld_coords.append(getWorldCoordsAtZ(coord[0], 0, cameraMatrix, rmat, tvec))														
 
-		for coord in realWorld_coords:
-			coord.tolist()
-			socket_clt.txdata=[(coord[0][0], coord[1][0]), (camera_pos[0][0],camera_pos[1][0],camera_pos[2][0])]
-			socket_clt.event.set()
-			#print((coord[0][0], coord[1][0]))
+			for coord in realWorld_coords:
+				coord.tolist()
+				socket_clt.txdata=[(coord[0][0], coord[1][0]), (camera_pos[0][0],camera_pos[1][0],camera_pos[2][0])]
+				socket_clt.event.set()
 		
 	#print("Camera coordinates:", camera_pos)
 
