@@ -21,10 +21,11 @@ if(valid_markers == 0):
 	print("Exiting program.")
 	quit()
 
+# Thread managing stuff
 done = False # Global to indicate end of processing (To stop threads)
-lock = threading.Lock() #
+lock = threading.Lock() # Interprocess variable for mutual exclusion
 pool = [] # Pool of ImageProcessor threads
-queue = queue.Queue()
+nProcess = 3 # Number of threads to process frames
 
 # Camera Settings and Startup
 RESOLUTION = (4032, 3040)
@@ -74,6 +75,9 @@ detector_l = cv2.SimpleBlobDetector_create(params_low)
 lower_range = np.array([  0,  0, 83])
 upper_range = np.array([233,255,255])
 
+# LED position data from this camera
+this_cam_data=None
+
 # Returns (x,y) real world coordinates at height z.
 def getWorldCoordsAtZ(image_point, z, mtx, rmat, tvec):
 
@@ -99,23 +103,9 @@ def getWorldCoordsAtZ(image_point, z, mtx, rmat, tvec):
 
 	return wcPoint
 
-
-Nframes=0 # Number of processed frames
 # Processing pipeline for each frame
 def image_processor(frame):
-	global Nframes, done, this_cam_data
-	'''
-	with lock:
-		#print("Acquired frames", Nframes)
-		Nframes+=1
-
-	if Nframes > 100:
-		stop = datetime.datetime.now()
-		elapsed = (stop - start).total_seconds()
-		#print("Framerate:",Nframes/elapsed)
-		with lock:
-			done=True
-	'''
+	global this_cam_data
 
 	# Resize high resolution to low resolution
 	frame_low = cv2.resize(frame, (int(RESOLUTION[0]/rescale_factor),int(RESOLUTION[1]/rescale_factor)),interpolation = cv2.INTER_NEAREST)
@@ -137,7 +127,10 @@ def image_processor(frame):
 			x=int(led[0])
 			y=int(led[1])
 			yuv_crop = frame[(y-crop_window):(y+crop_window), (x-crop_window):(x+crop_window)]
-			mask = cv2.inRange(yuv_crop, lower_range, upper_range)
+			try:
+				mask = cv2.inRange(yuv_crop, lower_range, upper_range)
+			except:
+				break
 
 			# Look for blobs in each cropped region
 			keypoints_high = detector_h.detect(mask)
@@ -159,9 +152,11 @@ def image_processor(frame):
 
 			for coord in realWorld_coords:
 				coord.tolist()
-				socket_clt.txdata=[(coord[0][0], coord[1][0]), (camera_pos[0][0],camera_pos[1][0],camera_pos[2][0])]
-				socket_clt.event.set()
+				this_cam_data=[(coord[0][0], coord[1][0]), (camera_pos[0][0],camera_pos[1][0],camera_pos[2][0])]
 		
+	# Send location data to the server
+	socket_clt.txdata=this_cam_data
+	socket_clt.event.set()
 	#print("Camera coordinates:", camera_pos)
 
 	#print("Total processing time (s):",(datetime.datetime.now()-total).microseconds/1000000)
@@ -199,7 +194,7 @@ class ImageProcessor(threading.Thread):
 # Generator of buffers for the capture_sequence method.
 # Each buffer belongs to an ImageProcessor so each frame is sent to a different thread.
 def streams():
-	while True:
+	while not done:
 		with lock:
 			if pool:
 				processor = pool.pop()
@@ -209,11 +204,11 @@ def streams():
 			yield processor.stream
 			processor.event.set()
 		else:
-			# When the pool is starved, wait a while for it to refill
+			# If the pool is starved, stop the program. Increase nProcess
 			break
 			
 socket_clt = Socket_Client()
-pool = [ImageProcessor(image_processor) for i in range(3)]
+pool = [ImageProcessor(image_processor) for i in range(nProcess)]
 start = datetime.datetime.now()
 prev_frame_time = datetime.datetime.now()
 print("Starting capture.")
