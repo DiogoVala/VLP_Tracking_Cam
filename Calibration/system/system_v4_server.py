@@ -183,6 +183,7 @@ print("Camera warming up.")
 time.sleep(1)
 
 # Initialize pool of threads to process each frame
+global ImgProcessorPool
 ImgProcessorPool = [ImageProcessor(image_processor, camera, camera_resolution) for i in range(nProcess)]
 
 print("Starting capture.")

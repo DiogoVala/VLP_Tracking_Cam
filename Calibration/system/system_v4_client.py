@@ -1,51 +1,25 @@
 import io
 import time
 import threading
-import queue
 import picamera
-from PIL import Image
-from picamera.array import PiYUVArray
 import datetime
-from PIL import Image
+import math
 import cv2
 import numpy as np
-import math
-from scipy.spatial.transform import Rotation
 from numpy.linalg import inv
+from numpy import array, cross
+from numpy.linalg import solve, norm
+from scipy.spatial.transform import Rotation
 from sys_calibration_bare import *
 from sys_connection import *
+from image_processor import *
 
-print("Starting client camera.")
-
-# Run system calibration before starting camera
-valid_markers, camera_pos, camera_ori, mapx, mapy, cameraMatrix, cameraDistortion, newCameraMatrix, rmat, tvec = runCalibration()
-if(valid_markers == 0):
-	print("Exiting program.")
-	quit()
-
-# Thread managing stuff
-done = False # Global to indicate end of processing (To stop threads)
-lock = threading.Lock() # Interprocess variable for mutual exclusion
-pool = [] # Pool of ImageProcessor threads
-nProcess = 3 # Number of threads to process frames
-
-# Camera Settings and Startup
-RESOLUTION = (4032, 3040)
+# Camera Settings
+camera_resolution = (4032, 3040)
 rescale_factor = 16
 crop_window = 100
 
-#RESOLUTION = (2016, 1520)
-camera = picamera.PiCamera()
-camera.resolution = RESOLUTION
-camera.exposure_mode = 'auto'
-#camera.framerate = 90
-camera.iso 	= 1600
-#camera.start_preview()
-frame_T_ms=242 # Time between frames. Adjusted for frame acquisition delay
-print("Camera warming up.")
-time.sleep(1)
-
-# Blob detector (High Resolution)
+# Blob detector settings (High Resolution)
 params = cv2.SimpleBlobDetector_Params()
 params.filterByArea = True
 params.minArea = 50
@@ -59,7 +33,7 @@ params.filterByInertia = True
 params.minInertiaRatio = 0.1
 detector_h = cv2.SimpleBlobDetector_create(params)
 
-# Blob detector (Rescaled Resolution)
+# Blob detector settings (Rescaled Resolution)
 params_low = cv2.SimpleBlobDetector_Params()
 params_low.filterByArea = True
 params_low.minArea = int(params.minArea/rescale_factor)
@@ -166,55 +140,41 @@ def image_processor(frame):
 
 	return
 
-class ImageProcessor(threading.Thread):
-	def __init__(self, processor_fcn):
-		super(ImageProcessor, self).__init__()
-		self.processor_fcn = processor_fcn
-		self.stream = PiYUVArray(camera, size=RESOLUTION)
-		self.event = threading.Event()
-		self.terminated = False
-		self.start()
+####### MAIN ####### 
+print("Starting client camera.")
 
-	def run(self):
-		# This method runs in a separate thread
-		while not self.terminated:
-			# Wait for an image to be written to the stream
-			if self.event.wait(1):
-				try:
-					#print(f"\n{threading.current_thread()} at: {datetime.datetime.now()}")
-					self.stream.seek(0)
-					frame = self.stream.array
-					if frame.size != 0:
-						self.processor_fcn(frame) # Call function to process frame
-				finally:
-					self.stream.seek(0)
-					self.stream.truncate()
-					self.event.clear()
-					with lock:
-						pool.append(self)
-
-# Generator of buffers for the capture_sequence method.
-# Each buffer belongs to an ImageProcessor so each frame is sent to a different thread.
-def streams():
-	while not done:
-		with lock:
-			if pool:
-				processor = pool.pop()
-			else:
-				processor = None
-		if processor:
-			yield processor.stream
-			processor.event.set()
-		else:
-			# If the pool is starved, stop the program. Increase nProcess
-			break
-			
+# Initialize Socket Server
 socket_clt = Socket_Client()
-pool = [ImageProcessor(image_processor) for i in range(nProcess)]
-start = datetime.datetime.now()
-prev_frame_time = datetime.datetime.now()
+
+# Run system calibration before starting camera (Must be done before creating a PiCamera instance)
+valid_markers, camera_pos, camera_ori, mapx, mapy, cameraMatrix, cameraDistortion, newCameraMatrix, rmat, tvec = runCalibration()
+if(valid_markers == 0):
+	print("Exiting program.")
+	quit()
+
+# Camera startup
+camera = picamera.PiCamera()
+camera.resolution = camera_resolution
+camera.exposure_mode = 'auto'
+camera.iso 	= 1600
+print("Camera warming up.")
+time.sleep(1)
+
+# Initialize pool of threads to process each frame
+global ImgProcessorPool
+ImgProcessorPool = [ImageProcessor(image_processor, camera, camera_resolution) for i in range(nProcess)]
+
 print("Starting capture.")
-camera.capture_sequence(streams(), use_video_port=True, format='yuv')
+camera.capture_sequence(getStream(), use_video_port=True, format='yuv')
+
+while pool:
+	with ImgProcessorLock:
+		processor = pool.pop()
+	processor.terminated = True
+	processor.join()
+socket_clt.join()
+print("Terminating program.")
+
 
 print("Terminating program.")
 while pool:
