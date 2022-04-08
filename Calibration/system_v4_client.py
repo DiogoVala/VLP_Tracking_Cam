@@ -103,9 +103,8 @@ def getWorldCoordsAtZ(image_point, z, mtx, rmat, tvec):
 Nframes=0 # Number of processed frames
 # Processing pipeline for each frame
 def image_processor(frame):
-	#print("Processing frame")
-
-	global Nframes, done, socket_clt
+	global Nframes, done, this_cam_data
+	'''
 	with lock:
 		#print("Acquired frames", Nframes)
 		Nframes+=1
@@ -116,8 +115,7 @@ def image_processor(frame):
 		#print("Framerate:",Nframes/elapsed)
 		with lock:
 			done=True
-
-	total = datetime.datetime.now()
+	'''
 
 	# Resize high resolution to low resolution
 	frame_low = cv2.resize(frame, (int(RESOLUTION[0]/rescale_factor),int(RESOLUTION[1]/rescale_factor)),interpolation = cv2.INTER_NEAREST)
@@ -133,52 +131,37 @@ def image_processor(frame):
 		leds_rough = [keypoint.pt for keypoint in keypoints_low]
 		leds_rough = [(int(x)*rescale_factor, int(y)*rescale_factor) for x,y in leds_rough]
 
-	# Crop frame around each LED
-	leds_refined=[]
-	for led in leds_rough:
-		x=int(led[0])
-		y=int(led[1])
-		yuv_crop = frame[(y-crop_window):(y+crop_window), (x-crop_window):(x+crop_window)]
-		mask = cv2.inRange(yuv_crop, lower_range, upper_range)
-
-		# Look for blobs in each cropped region
-		keypoints_high = detector_h.detect(mask)
-
-		# Refine LED positions
-		for keypoint_high in keypoints_high:
-			led_refined = keypoint_high.pt
-			led_refined = (round(led_refined[0])+x-crop_window, round(led_refined[1])+y-crop_window)
-			leds_refined.append(led_refined)
-
-	if leds_refined:
-		for led in leds_refined:
+		# Crop frame around each LED
+		leds_refined=[]
+		for led in leds_rough:
 			x=int(led[0])
 			y=int(led[1])
-			frame = cv2.line(frame, (x-30, y), (x+30, y),(0,0,255), 5)
-			frame = cv2.line(frame, (x, y-30), (x, y+30),(0,0,255), 5)
+			yuv_crop = frame[(y-crop_window):(y+crop_window), (x-crop_window):(x+crop_window)]
+			mask = cv2.inRange(yuv_crop, lower_range, upper_range)
 
-	leds_refined = np.array(leds_refined, dtype=np.float32)
+			# Look for blobs in each cropped region
+			keypoints_high = detector_h.detect(mask)
 
-	tic = datetime.datetime.now()
-	undistorted_coords = cv2.undistortPoints(leds_refined, cameraMatrix, cameraDistortion, None, newCameraMatrix)
-	#print("cv2.undistortPoints (s):",(datetime.datetime.now()-tic).microseconds/1000000)
+			# Refine LED positions
+			for keypoint_high in keypoints_high:
+				led_refined = keypoint_high.pt
+				led_refined = (round(led_refined[0])+x-crop_window, round(led_refined[1])+y-crop_window)
+				leds_refined.append(led_refined)
 
-	tic = datetime.datetime.now()
-	realWorld_coords = []
-	for coord in undistorted_coords:
-		realWorld_coords.append(getWorldCoordsAtZ(coord[0], 0, cameraMatrix, rmat, tvec))
-	#print("getWorldCoordsAtZ (s):",(datetime.datetime.now()-tic).microseconds/1000000)
+		if leds_refined:
+			leds_refined = np.array(leds_refined, dtype=np.float32)
 
-	#print("Pixel coordinates:")
-	#for coord in undistorted_coords:
-		#print((coord[0][0], coord[0][1]))
+			undistorted_coords = cv2.undistortPoints(leds_refined, cameraMatrix, cameraDistortion, None, newCameraMatrix)
 
-	#print("Real world coordinates:")
-	for coord in realWorld_coords:
-		coord.tolist()
-		socket_clt.txdata=[(coord[0][0], coord[1][0]), (camera_pos[0][0],camera_pos[1][0],camera_pos[2][0])]
-		socket_clt.event.set()
-		#print((coord[0][0], coord[1][0]))
+			realWorld_coords = []
+			for coord in undistorted_coords:
+				realWorld_coords.append(getWorldCoordsAtZ(coord[0], 0, cameraMatrix, rmat, tvec))														
+
+		for coord in realWorld_coords:
+			coord.tolist()
+			socket_clt.txdata=[(coord[0][0], coord[1][0]), (camera_pos[0][0],camera_pos[1][0],camera_pos[2][0])]
+			socket_clt.event.set()
+			#print((coord[0][0], coord[1][0]))
 		
 	#print("Camera coordinates:", camera_pos)
 
@@ -205,7 +188,8 @@ class ImageProcessor(threading.Thread):
 					#print(f"\n{threading.current_thread()} at: {datetime.datetime.now()}")
 					self.stream.seek(0)
 					frame = self.stream.array
-					self.processor_fcn(frame) # Call function to process frame
+					if frame.size != 0:
+						self.processor_fcn(frame) # Call function to process frame
 				finally:
 					self.stream.seek(0)
 					self.stream.truncate()
@@ -216,7 +200,7 @@ class ImageProcessor(threading.Thread):
 # Generator of buffers for the capture_sequence method.
 # Each buffer belongs to an ImageProcessor so each frame is sent to a different thread.
 def streams():
-	while not done:
+	while True:
 		with lock:
 			if pool:
 				processor = pool.pop()
@@ -228,7 +212,6 @@ def streams():
 		else:
 			# When the pool is starved, wait a while for it to refill
 			break
-			#time.sleep(0.1)
 			
 socket_clt = Socket_Client()
 pool = [ImageProcessor(image_processor) for i in range(3)]
@@ -243,3 +226,4 @@ while pool:
 		processor = pool.pop()
 	processor.terminated = True
 	processor.join()
+socket_clt.join()

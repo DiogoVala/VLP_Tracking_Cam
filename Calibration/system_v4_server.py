@@ -170,7 +170,8 @@ class ImageProcessor(threading.Thread):
 					#print(f"\n{threading.current_thread()} at: {datetime.datetime.now()}")
 					self.stream.seek(0)
 					frame = self.stream.array
-					self.processor_fcn(frame) # Call function to process frame
+					if frame is not None:
+						self.processor_fcn(frame) # Call function to process frame
 				finally:
 					self.stream.seek(0)
 					self.stream.truncate()
@@ -213,7 +214,7 @@ def intersect(other_cam_data):
 # Generator of buffers for the capture_sequence method.
 # Each buffer belongs to an ImageProcessor so each frame is sent to a different thread.
 def streams():
-	while not done:
+	while True:
 		with lock:
 			if pool:
 				processor = pool.pop()
@@ -223,6 +224,7 @@ def streams():
 			yield processor.stream
 			processor.event.set()
 		else:
+			# When the pool is starved, wait a while for it to refill
 			break
 			
 socket_sv = Socket_Server(intersect)
