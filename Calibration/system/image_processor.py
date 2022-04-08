@@ -42,7 +42,6 @@ class ImageProcessor(threading.Thread):
 def getStream():
 	while not ImgProcessorDone:
 		with ImgProcessorLock:
-			print(ImgProcessorPool)
 			if ImgProcessorPool:
 				processor = ImgProcessorPool.pop()
 				yield processor.stream
