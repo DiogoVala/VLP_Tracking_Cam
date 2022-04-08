@@ -17,6 +17,8 @@ from sys_connection import *
 from numpy import array, cross
 from numpy.linalg import solve, norm
 
+print("Starting server camera.")
+
 # Run system calibration before starting camera
 valid_markers, camera_pos, camera_ori, mapx, mapy, cameraMatrix, cameraDistortion, newCameraMatrix, rmat, tvec = runCalibration()
 if(valid_markers == 0):

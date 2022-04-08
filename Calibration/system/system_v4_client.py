@@ -15,6 +15,8 @@ from numpy.linalg import inv
 from sys_calibration_bare import *
 from sys_connection import *
 
+print("Starting client camera.")
+
 # Run system calibration before starting camera
 valid_markers, camera_pos, camera_ori, mapx, mapy, cameraMatrix, cameraDistortion, newCameraMatrix, rmat, tvec = runCalibration()
 if(valid_markers == 0):
