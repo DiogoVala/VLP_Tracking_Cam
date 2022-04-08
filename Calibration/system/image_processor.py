@@ -1,9 +1,10 @@
 import threading
 from picamera.array import PiYUVArray
 import numpy
+import time
 
 # Thread management
-nProcess = 5 # Number of threads to run
+nProcess = 3 # Number of threads to run
 ImgProcessorLock = threading.Lock() # Interprocess variable for mutual exclusion
 ImgProcessorDone = False # Global to indicate end of processing (To stop threads)
 ImgProcessorPool = []
@@ -32,8 +33,8 @@ class ImageProcessor(threading.Thread):
 					self.stream.seek(0)
 					self.stream.truncate()
 					self.event.clear()
-					with ImgProcessorLock:
-						ImgProcessorPool.append(self)
+					#with ImgProcessorLock:
+					ImgProcessorPool.append(self)
 
 
 # Generator of buffers for the capture_sequence method.
@@ -41,10 +42,12 @@ class ImageProcessor(threading.Thread):
 def getStream():
 	while not ImgProcessorDone:
 		with ImgProcessorLock:
+			print(ImgProcessorPool)
 			if ImgProcessorPool:
 				processor = ImgProcessorPool.pop()
 				yield processor.stream
 				processor.event.set()
 			else:
+				time.sleep(0.1)
 				print("ImgProcessorPool empty")
-				break
+				#break
