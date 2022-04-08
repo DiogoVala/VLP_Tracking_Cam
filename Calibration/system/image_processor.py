@@ -3,7 +3,7 @@ from picamera.array import PiYUVArray
 import numpy
 
 # Thread management
-nProcess = 3 # Number of threads to run
+nProcess = 5 # Number of threads to run
 ImgProcessorLock = threading.Lock() # Interprocess variable for mutual exclusion
 ImgProcessorDone = False # Global to indicate end of processing (To stop threads)
 ImgProcessorPool = []
