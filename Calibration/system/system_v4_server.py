@@ -13,6 +13,7 @@ from scipy.spatial.transform import Rotation
 from sys_calibration_bare import *
 from sys_connection import *
 from image_processor import *
+global ImgProcessorPool, ImgProcessorDone, ImgProcessorLock
 
 # Camera Settings
 camera_resolution = (4032, 3040)
@@ -183,7 +184,6 @@ print("Camera warming up.")
 time.sleep(1)
 
 # Initialize pool of threads to process each frame
-global ImgProcessorPool
 ImgProcessorPool = [ImageProcessor(image_processor, camera, camera_resolution) for i in range(nProcess)]
 
 print("Starting capture.")
