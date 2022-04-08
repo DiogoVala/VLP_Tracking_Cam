@@ -80,7 +80,7 @@ def getWorldCoordsAtZ(image_point, z, mtx, rmat, tvec):
 	return wcPoint
 
 # Processing pipeline for each frame
-def image_processor(frame):
+def frame_processor(frame):
 	global this_cam_data
 
 	# Resize high resolution to low resolution
@@ -193,5 +193,5 @@ while imgp.ImgProcessorPool :
 		processor = imgp.ImgProcessorPool.pop()
 	processor.terminated = True
 	processor.join()
-socket_clt.join()
+socket_sv.join()
 print("Terminating program.")
