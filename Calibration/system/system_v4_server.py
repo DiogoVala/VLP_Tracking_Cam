@@ -12,8 +12,7 @@ from numpy.linalg import solve, norm
 from scipy.spatial.transform import Rotation
 from sys_calibration_bare import *
 from sys_connection import *
-from image_processor import *
-global ImgProcessorPool, ImgProcessorDone, ImgProcessorLock
+import image_processor as imgp
 
 # Camera Settings
 camera_resolution = (4032, 3040)
@@ -184,15 +183,15 @@ print("Camera warming up.")
 time.sleep(1)
 
 # Initialize pool of threads to process each frame
-ImgProcessorPool = [ImageProcessor(image_processor, camera, camera_resolution) for i in range(nProcess)]
+imgp.ImgProcessorPool = [imgp.ImageProcessor(frame_processor, camera, camera_resolution) for i in range(imgp.nProcess)]
 
 print("Starting capture.")
-camera.capture_sequence(getStream(), use_video_port=True, format='yuv')
+camera.capture_sequence(imgp.getStream(), use_video_port=True, format='yuv')
 
-while pool:
-	with ImgProcessorLock:
-		processor = pool.pop()
+while imgp.ImgProcessorPool :
+	with imgp.ImgProcessorLock:
+		processor = imgp.ImgProcessorPool.pop()
 	processor.terminated = True
 	processor.join()
-socket_sv.join()
+socket_clt.join()
 print("Terminating program.")

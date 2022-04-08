@@ -46,4 +46,5 @@ def getStream():
 				yield processor.stream
 				processor.event.set()
 			else:
+				print("ImgProcessorPool empty")
 				break
