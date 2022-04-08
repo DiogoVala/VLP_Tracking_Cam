@@ -48,8 +48,8 @@ params_low.minInertiaRatio = 0.1
 detector_l = cv2.SimpleBlobDetector_create(params_low)
 
 # Color detection thersholds (YUV)
-lower_range = np.array([  0,  0, 83])
-upper_range = np.array([233,255,255])
+lower_range = np.array([  0,  0, 79])
+upper_range = np.array([230,255,201])
 
 # LED position data from this camera
 this_cam_data=None
